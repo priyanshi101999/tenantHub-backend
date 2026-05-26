@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
-from app.schemas.user_schema import Register, Email, OTPInput, LoginInput
-from app.services.auth_Service import verify_email_service, verify_otp_service, register_user_service,login_Service
+from app.schemas.auth_schema import Register, Email, OTPInput, LoginInput,RefreshToken
+from app.models.user import User
+from app.services.auth_Service import verify_email_service, verify_otp_service, register_user_service,login_Service,refresh_token_Service,change_password_service
+from app.api.deps import get_current_user
+from app.schemas.auth_schema import ChangePassword
 
-router=APIRouter()
+router=APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post('/register')
 def register(registerData: Register, db : Session = Depends(get_db)):
@@ -21,3 +24,12 @@ def verify_otp(otpData:OTPInput, db:Session=Depends(get_db)):
 @router.post("/login")
 def login(loginData:LoginInput, db:Session=Depends(get_db)):
     return login_Service(loginData, db)
+
+@router.post("/refresh-token")
+def refresh_token(data:RefreshToken, db:Session=Depends(get_db)):
+    return refresh_token_Service(data, db)
+
+@router.post("/change-password")
+def change_password(data:ChangePassword, db:Session=Depends(get_db), currect_user: User=Depends(get_current_user)):
+    return change_password_service(data, db, currect_user)
+

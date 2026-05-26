@@ -11,7 +11,6 @@ def hash_pasword(password) -> str:
 def verify_password(password, hashed_password) -> bool:
     return pwd_hash.verify(password, hashed_password)
 
-
 def create_jwt_token(data:dict):
     to_encode=data.copy()
 

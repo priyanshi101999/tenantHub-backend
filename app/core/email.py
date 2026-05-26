@@ -11,6 +11,7 @@ def send_email(email:str, subject:str, html_content:str):
             subject=subject,
             html_content=html_content
         )
+        print("message", settings.sendgrid_api_key)
         sg=SendGridAPIClient(settings.sendgrid_api_key)
         print("sg.send",sg)
         response=sg.send(message)

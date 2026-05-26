@@ -8,7 +8,8 @@ from app.core.email import send_email
 from app.utils.otp import generate_otp
 from datetime import datetime, timedelta, timezone
 from app.core.config import settings
-from app.schemas.user_schema import OTPInput
+from app.schemas.auth_schema import OTPInput
+from fastapi import HTTPException, status
 
 
 def register_user_service(registerData, db):
@@ -138,5 +139,39 @@ def login_Service(loginData,db):
         print(e)
         db.rollback()
 
-    return {"message": "Login success", "access_token": access_token, "refresh_token": refresh_token,"token_type": "Bearer"}
+    return {"message": "Login success", "data": {"access_token": access_token, "refresh_token": refresh_token,"token_type": "Bearer"}}
+
+def refresh_token_Service(data:dict, db):
+    refresh_token=data.refresh_token
+
+    existing_token=db.query(RefreshToken).filter((RefreshToken.token==refresh_token) & RefreshToken.is_invoked==False).first()
+
+    if existing_token == None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, details="Invalid refresh token") 
+    
+    if datetime.now(timezone.utc) > existing_token.expired_at:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, details="Expired refresh token") 
+    
+    access_token=create_jwt_token({"user_id":existing_token.user_id})
+
+    return {"message": "Success", "data": {"access_token": access_token, "token_type": "Bearer"}}
+    
+
+def change_password_service(data, db, current_user):
+    old_password=data.old_password
+    new_password=data.new_password
+
+    if verify_password(old_password, current_user.password) == False:
+        return {"message": "Invalid old password"}
+    
+    current_user.password=hash_pasword(new_password)
+    db.commit()
+
+    return {"message": "Password changed successfully"}
+
+
+
+
+
+    
 
