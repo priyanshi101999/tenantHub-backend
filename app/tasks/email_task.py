@@ -1,8 +1,10 @@
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-from .config import settings
+from app.core.config import settings
+from app.core.celery import celery
 
-def send_email(email:str, subject:str, html_content:str):
+@celery.Task(bind=True, max_retries=3)
+def send_email_task(self, email:str, subject:str, html_content:str):
     print("send_email", email, subject, html_content, settings.sender_mail, settings.sendgrid_api_key)
     try:
         message = Mail(
@@ -19,5 +21,5 @@ def send_email(email:str, subject:str, html_content:str):
         return response
     except Exception as e:
         print("error", e)
-        return e
+        raise self.retry(exc=e, countdown=10)
 

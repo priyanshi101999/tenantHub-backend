@@ -8,12 +8,15 @@ class Register(BaseModel):
     workspaceName: str
     phone: str
 
-class Email(BaseModel):
+class EmailInput(BaseModel):
     email: str
 
 class OTPInput(BaseModel):
     email: str
     code: str
+
+class ResetPassword(OTPInput):
+    new_password: str
 
 class LoginInput(BaseModel):
     email: str

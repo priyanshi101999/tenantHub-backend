@@ -4,12 +4,14 @@ from app.models.otp import OTP
 from app.models.refresh_token import RefreshToken
 from app.core.security import hash_pasword, verify_password, create_jwt_token, create_refresh_token
 from app.templates.otp_email import otp_email_template
-from app.core.email import send_email
+from app.tasks.email_task import send_email_task
 from app.utils.otp import generate_otp
 from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.schemas.auth_schema import OTPInput
 from fastapi import HTTPException, status
+from app.core.redis_client import redis
+
 
 
 def register_user_service(registerData, db):
@@ -54,7 +56,7 @@ def verify_email_service(email, db):
     print("otp", otp)
     html_content=otp_email_template(otp)
 
-    response=send_email(email, "Email Verification", html_content)
+    response=send_email_task.delay(email, "Email Verification", html_content)
     if response.status_code==202:
 
         db.query(OTP).filter(OTP.email==email).delete()
@@ -168,6 +170,43 @@ def change_password_service(data, db, current_user):
     db.commit()
 
     return {"message": "Password changed successfully"}
+
+def forget_password_service(email):
+    otp=generate_otp()
+
+    html_content=html_content(otp)
+
+    send_email_task.delay(email, "Forget Password", html_content)
+    redis.setex(f"forget_password:{email}", 300 , otp)
+
+    return {"message": "OTP sent to your email successfully"}
+
+def reset_password_service(data,db):
+    otp=data.otp
+    new_password=data.new_password
+    email=data.emil
+
+    stored_otp=redis.get(f"forgot_password:{email}")
+
+    if stored_otp != otp:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
+    
+    existing_user=db.query(User).filter(User.email==email)
+
+    if existing_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    try:
+        existing_user.password=hash_pasword(new_password)
+        db.commit()
+    except Exception as e:
+        print("Error", e)
+        db.rollback()
+    
+    return {"message": "Password reset successfully"}
+
+
+
 
 
 

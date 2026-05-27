@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .
+    ports:
+      - 8000:8000
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    command: uvicorn app.main:app --reload
+    
+  db:
+    image: postgres:16
+    ports:
+      - 5432:5432
+    env_file:
+      - .env
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+
+volumes:
+  postgres-db:
+
+   
+   
