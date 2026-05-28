@@ -1,11 +1,11 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    database_host:str
-    database_password:str
-    database_port:int
-    database_username:str
-    database_name:str
+    postgres_host:str
+    postgres_password:str
+    postgres_port:int
+    postgres_user:str
+    postgres_db:str
     database_url:str
     sendgrid_api_key:str
     sender_mail:str

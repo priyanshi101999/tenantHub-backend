@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.schemas.auth_schema import OTPInput
 from fastapi import HTTPException, status
-from app.core.redis_client import redis
+from app.core.redis_client import redis_client as redis
 
 
 
@@ -57,55 +57,39 @@ def verify_email_service(email, db):
     html_content=otp_email_template(otp)
 
     response=send_email_task.delay(email, "Email Verification", html_content)
-    if response.status_code==202:
-
-        db.query(OTP).filter(OTP.email==email).delete()
-
-        otp_data={
-            "email":email,
-            "code":otp,
-            "expire_at": datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
-        }
-
-        print("otp_Data", otp_data)
-
-        try:
-            db.add(OTP(**otp_data))
-            db.commit()
-        except Exception as e:
-            print(e)
-            db.rollback()
-
+    print("response", response)
+    if response:
+        redis.setex(f"email_verification:{email}", 300 , otp)
         return {"message": "Email sent successfully"}
     else:
         return {"message": "Email sending failed"}
     
 def verify_otp_service(OtpData: OTPInput,db):
 
-    existing_otp=db.query(OTP).filter(OTP.email==OtpData.email).first()
-    print("existing_otp", {
-    "email": existing_otp.email,
-    "code": existing_otp.code
-})
+    existing_otp=redis.get(f"email_verification:{OtpData.email}")
+    print("existing_otp", existing_otp, OtpData.code)
 
-    if datetime.now(timezone.utc) > existing_otp.expire_at:
-        return {"message": "OTP expired"}
+    if existing_otp == None:
+        return {"message": "Otp expired"}
     
-    if existing_otp.code==OtpData.code:
+    if existing_otp==OtpData.code:
+        print("existing_otp.matched")
         try:
             user_query=db.query(User).filter(User.email==OtpData.email)
             
             if user_query.first() == None:
                 return {"message": "User not found"}
             
+            print("user_query", user_query.first())
+            
             user_query.update({"email_verified": True }, synchronize_session=False)
 
-            db.query(OTP).filter(OTP.email==OtpData.email).delete()
             db.commit()
             return {"message": "Otp verified success"}
         except Exception as e:
             print(e)
             db.rollback()
+            return {"message": "Otp verification failed"}
     else:
         return {"message": "Invalid OTP"}
 
