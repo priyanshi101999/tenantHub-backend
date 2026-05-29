@@ -1,14 +1,32 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from datetime import datetime
 
-class User(BaseModel):
+
+class UserInput(BaseModel):
     name: str
     email: str
     role: str
     workspace_id: int
-    phone: str
+
+class UserOut(UserInput):
+    id: int
     email_verified: bool
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True) 
+
+class User(UserOut):
     password: str
+
+class InviteUser(BaseModel):
+    email: str
+    
+class InviteUserOut(BaseModel):
+    email: str
+    invite_link: str
+
+
+
 
 

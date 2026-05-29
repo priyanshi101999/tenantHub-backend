@@ -9,7 +9,7 @@ class User(Base):
     id=Column(Integer, nullable=False, primary_key=True, index=True)
     name=Column(String, nullable=False)
     email=Column(String, nullable=False, unique=True)
-    password=Column(String,nullable=False)
+    password=Column(String,nullable=True)
     role=Column(Enum(Role), nullable=False, server_default=Role.USER.value)
     email_verified=Column(Boolean, server_default=text("false"), nullable=False)
     workspace_id=Column(Integer,ForeignKey("workspaces.id"),  nullable=False, index=True)

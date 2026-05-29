@@ -24,7 +24,7 @@ def get_current_user(
     payload=verify_token(credentials.credentials)
 
     if payload is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access")
     
     user=db.query(User).filter(User.id==payload.get("user_id")).first()
 

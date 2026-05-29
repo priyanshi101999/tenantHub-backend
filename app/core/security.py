@@ -5,7 +5,7 @@ from jose import jwt
 
 pwd_hash=PasswordHash.recommended()
 
-def hash_pasword(password) -> str:
+def hash_password(password) -> str:
     return pwd_hash.hash(password)
 
 def verify_password(password, hashed_password) -> bool:

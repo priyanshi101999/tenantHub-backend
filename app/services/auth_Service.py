@@ -2,15 +2,17 @@ from app.models.workspace import Workspace
 from app.models.user import User
 from app.models.otp import OTP 
 from app.models.refresh_token import RefreshToken
-from app.core.security import hash_pasword, verify_password, create_jwt_token, create_refresh_token
+from app.core.security import hash_password, verify_password, create_jwt_token, create_refresh_token
 from app.templates.otp_email import otp_email_template
 from app.tasks.email_task import send_email_task
-from app.utils.otp import generate_otp
+from app.utils.secret_key import generate_otp
 from datetime import datetime, timedelta, timezone
 from app.core.config import settings
-from app.schemas.auth_schema import OTPInput
+from app.schemas.auth_schema import OTPInput,LoginOut
 from fastapi import HTTPException, status
 from app.core.redis_client import redis_client as redis
+from app.schemas.response_schema import APIResponse
+from app.models.refresh_token import RefreshToken
 
 
 
@@ -31,7 +33,7 @@ def register_user_service(registerData, db):
     db.add(workspace)
     db.flush()
 
-    hashed_password=hash_pasword(registerData.password)
+    hashed_password=hash_password(registerData.password)
     
     userData={
         "name": registerData.name,
@@ -59,7 +61,7 @@ def verify_email_service(email, db):
     response=send_email_task.delay(email, "Email Verification", html_content)
     print("response", response)
     if response:
-        redis.setex(f"email_verification:{email}", 300 , otp)
+        redis.set(f"email_verification:{email}", otp, ex=300)
         return {"message": "Email sent successfully"}
     else:
         return {"message": "Email sending failed"}
@@ -107,7 +109,7 @@ def login_Service(loginData,db):
         return {"message": "Email not verified, please verify your email"}
     
     if verify_password(password, existing_user.password) == False:
-        return {"message": "Invalid password"}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password")
     
     access_token=create_jwt_token({"user_id": existing_user.id, "workspace_id": existing_user.workspace_id})
     refresh_token=create_refresh_token({"user_id": existing_user.id, "workspace_id": existing_user.workspace_id})
@@ -125,7 +127,14 @@ def login_Service(loginData,db):
         print(e)
         db.rollback()
 
-    return {"message": "Login success", "data": {"access_token": access_token, "refresh_token": refresh_token,"token_type": "Bearer"}}
+    login_data={
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "Bearer"
+    }
+
+    return APIResponse(message="Login successful", 
+                       data= LoginOut.model_validate(login_data), status=status.HTTP_200_OK)
 
 def refresh_token_Service(data:dict, db):
     refresh_token=data.refresh_token
@@ -150,7 +159,7 @@ def change_password_service(data, db, current_user):
     if verify_password(old_password, current_user.password) == False:
         return {"message": "Invalid old password"}
     
-    current_user.password=hash_pasword(new_password)
+    current_user.password=hash_password(new_password)
     db.commit()
 
     return {"message": "Password changed successfully"}
@@ -161,7 +170,7 @@ def forget_password_service(email):
     html_content=html_content(otp)
 
     send_email_task.delay(email, "Forget Password", html_content)
-    redis.setex(f"forget_password:{email}", 300 , otp)
+    redis.set(f"forget_password:{email}", otp, ex=300)
 
     return {"message": "OTP sent to your email successfully"}
 
@@ -181,7 +190,7 @@ def reset_password_service(data,db):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     try:
-        existing_user.password=hash_pasword(new_password)
+        existing_user.password=hash_password(new_password)
         db.commit()
     except Exception as e:
         print("Error", e)
@@ -189,6 +198,54 @@ def reset_password_service(data,db):
     
     return {"message": "Password reset successfully"}
 
+def set_password_service(data, db):
+    password=data.password
+    secret_token=data.secret_token
+
+    email=redis.get(f"invite_token:{secret_token}")
+
+    if email is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    
+    user=db.query(User).filter(User.email==email).first()
+
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    access_token=create_jwt_token({"user_id": user.id, "workspace_id": user.workspace_id})
+    refresh_token=create_refresh_token({"user_id": user.id, "workspace_id": user.workspace_id})
+    refresh_Token_data={
+        "user_id":user.id,
+        "token":refresh_token,
+        "expired_at":datetime.now(timezone.utc)+timedelta(days=settings.refresh_token_expire_days)
+    }
+
+    try:
+        print("row.password", password)
+        db.query(RefreshToken).filter(RefreshToken.user_id==user.id).delete(synchronize_session=False)
+        user.password=hash_password(password)
+        print("user.password", user.password)
+        user.email_verified=True
+        db.add(RefreshToken(**refresh_Token_data))
+        db.add(user)
+        db.commit()
+    except Exception as e:
+        print("Error", e)
+        db.rollback()
+
+    login_data={
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "Bearer"
+    }
+
+    return APIResponse(message="set password successful", 
+                       data= LoginOut.model_validate(login_data), status=status.HTTP_200_OK)
+
+
+
+   
 
 
 

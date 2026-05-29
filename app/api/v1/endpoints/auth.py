@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
-from app.schemas.auth_schema import Register, EmailInput, OTPInput, LoginInput,RefreshToken,ResetPassword
-from app.models.user import User
-from app.services.auth_Service import verify_email_service, verify_otp_service, register_user_service,login_Service,refresh_token_Service,change_password_service,forget_password_service,reset_password_service
-from app.api.deps import get_current_user
 from app.schemas.auth_schema import ChangePassword
+from app.schemas.auth_schema import SetPasswordInput,Register, EmailInput, OTPInput, LoginInput,RefreshToken,ResetPassword
+from app.models.user import User
+from app.services.auth_Service import verify_email_service, verify_otp_service, register_user_service,login_Service,refresh_token_Service,change_password_service,forget_password_service,reset_password_service,set_password_service
+from app.api.deps import get_current_user
+from app.schemas.response_schema import APIResponse
 
 router=APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -21,7 +22,7 @@ def verify_email(data: EmailInput, db:Session =Depends(get_db)):
 def verify_otp(otpData:OTPInput, db:Session=Depends(get_db)):
     return verify_otp_service(otpData, db)
 
-@router.post("/login")
+@router.post("/login", response_model=APIResponse)
 def login(loginData:LoginInput, db:Session=Depends(get_db)):
     return login_Service(loginData, db)
 
@@ -40,3 +41,8 @@ def forgot_password(data:EmailInput):
 @router.post("/reset-password")
 def reset_password(data:ResetPassword, db:Session=Depends(get_db)):
     return reset_password_service(data, db)
+
+@router.post("/set-password", status_code=200, response_model=APIResponse)
+def set_password(data:SetPasswordInput, db:Session=Depends(get_db)):
+    return set_password_service(data, db)
+

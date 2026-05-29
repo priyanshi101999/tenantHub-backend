@@ -28,3 +28,12 @@ class RefreshToken(BaseModel):
 class ChangePassword(BaseModel):
     old_password: str
     new_password: str
+
+class SetPasswordInput(BaseModel):
+    password: str
+    secret_token: str
+
+class LoginOut(BaseModel):
+    access_token: str
+    token_type: str
+    refresh_token: str
