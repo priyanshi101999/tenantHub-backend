@@ -24,6 +24,12 @@ async def register_user_service(registerData, db):
 
         if existing_email:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+        
+        existing_workspace_query=await db.execute(select(Workspace).where(Workspace.name==registerData.workspaceName))
+        existing_workspace=existing_workspace_query.scalars().first()
+
+        if existing_workspace:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Workspace already exists")
 
         workSpaceData={
             "name": registerData.workspaceName,
@@ -59,6 +65,11 @@ async def register_user_service(registerData, db):
             data=UserOut.model_validate(user),
             status=status.HTTP_201_CREATED
         )
+    
+    except HTTPException:
+        await db.rollback()
+        raise
+
     except Exception as e:
         print(e)
         await db.rollback()
@@ -73,6 +84,12 @@ async def verify_email_service(email, db):
     html_content=otp_email_template(otp)
 
     try:
+        result=await db.execute(select(User).where(User.email==email))
+        user=result.scalars().first()
+
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
         send_email_task.delay(email, "Email Verification", html_content)
         await redis.set(f"email_verification:{email}", otp, ex=300)
         return APIResponse(message="Email sent successfully", status=status.HTTP_200_OK)

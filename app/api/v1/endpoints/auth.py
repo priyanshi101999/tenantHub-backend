@@ -16,8 +16,8 @@ async def register(registerData: Register, db : AsyncSession = Depends(get_db)):
     return await register_user_service(registerData, db)
 
 @router.post("/verify-email", status_code=200, response_model=APIResponse)
-async def verify_email(data: EmailInput):
-    return await verify_email_service(data.email)
+async def verify_email(data: EmailInput, db: AsyncSession = Depends(get_db)):
+    return await verify_email_service(data.email, db)
 
 @router.post("/verify-otp", status_code=200, response_model=APIResponse)
 async def verify_otp(otpData:OTPInput, db:AsyncSession=Depends(get_db)):
@@ -38,7 +38,7 @@ async def change_password(data:ChangePassword, db:AsyncSession=Depends(get_db), 
 
 @router.post("/forgot-password", status_code=200, response_model=APIResponse)
 async def forgot_password(data:EmailInput, db:AsyncSession=Depends(get_db)):
-    return await forgot_password_service(data, db)
+    return await forgot_password_service(data.email, db)
 
 @router.post("/reset-password", status_code=200, response_model=APIResponse)
 async def reset_password(data:ResetPassword, db:AsyncSession=Depends(get_db)):

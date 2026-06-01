@@ -33,7 +33,7 @@ def create_refresh_token(data:dict):
 
     return token
 
-async def verify_token(token:str):
+def verify_token(token:str):
     try:
         payload=jwt.decode(token,settings.secret_key,algorithms=[settings.algorithm]) 
         return payload

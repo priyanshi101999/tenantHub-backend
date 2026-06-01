@@ -10,13 +10,20 @@ from app.tasks.email_task import send_email_task
 from app.templates.invite_mail import get_invite_email_template
 from fastapi import status, HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 
-async def add_user_service(data, db):
+async def add_user_service(data, db, current_user):
     data = data.model_dump()
 
     try:
-        result = await db.execute(select(User).where(User.email == data["email"]))
+        if current_user.workspace_id != data["workspace_id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only add users to your own workspace"
+            )
+        
+        result = await db.execute(select(User).options(selectinload(User.workspace)).where(User.email == data["email"]))
         existing_user=result.scalars().first()
 
         if existing_user:
@@ -28,7 +35,7 @@ async def add_user_service(data, db):
         user = User(**data)
         db.add(user)
         await db.commit()
-        await db.refresh(user)
+        await db.refresh(user, attribute_names=["workspace"])
 
         return APIResponse(
             status=status.HTTP_201_CREATED,
@@ -88,7 +95,7 @@ async def user_list_service(db, current_user):
     if current_user.role !=Role.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You not have access")
     
-    result=await db.execute(select(User).where(User.workspace_id==workspace_id, User.isDeleted==False,User.role==Role.USER))
+    result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER))
     user_list=result.scalars().all()
     data=[UserOut.model_validate(u) for u in user_list]
 
@@ -126,8 +133,9 @@ async def delete_user_service(id, db, current_user):
         await db.rollback()
         print("error", e)
         raise HTTPException(status_code=500, detail="Failed to delete user")
-
     
+
+
 
 
 

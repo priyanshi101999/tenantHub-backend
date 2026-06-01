@@ -1,5 +1,5 @@
 from app.db.base import Base
-from sqlalchemy import func, text, ForeignKey, String
+from sqlalchemy import func, text, ForeignKey, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
@@ -13,7 +13,7 @@ class TaskAttachment(Base):
     file_name:  Mapped[str] = mapped_column(String(255))
     file_size:  Mapped[int] = mapped_column()
     file_path:  Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=func.now())
 
     task=relationship(
         "Task",

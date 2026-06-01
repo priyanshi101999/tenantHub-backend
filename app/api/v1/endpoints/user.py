@@ -11,7 +11,7 @@ router=APIRouter(prefix="/user", tags=["User"])
 
 @router.post("/create", status_code=201, response_model=APIResponse)
 async def add_user(data:UserInput, db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):
-    return await add_user_service(data, db)
+    return await add_user_service(data, db, current_user)
 
 @router.post("/invite", status_code=201, response_model=APIResponse)
 async def invite_user(data:InviteUser, db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):

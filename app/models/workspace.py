@@ -1,5 +1,5 @@
 from app.db.base import Base
-from sqlalchemy import func, String,text, Text, ForeignKey
+from sqlalchemy import func, String, Text, ForeignKey, DateTime
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from datetime import datetime
 
@@ -14,8 +14,8 @@ class Workspace(Base):
     is_deleted:    Mapped[bool] = mapped_column(default=False)
     is_active:    Mapped[bool] = mapped_column(default=True)
     plan_id:     Mapped[int|None] = mapped_column(ForeignKey("plans.id", ondelete="SET NULL"), nullable=True)
-    created_at:   Mapped[datetime] = mapped_column(default=func.now())
-    updated_at:   Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+    created_at:   Mapped[datetime] = mapped_column(DateTime(timezone=True),default=func.now())
+    updated_at:   Mapped[datetime] = mapped_column(DateTime(timezone=True),default=func.now(), onupdate=func.now())
 
     users = relationship(
     "User",
