@@ -1,9 +1,11 @@
 from app.core.config import settings
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 
 print(settings.database_url)
 DATABASE_URL=settings.database_url
-engine=create_engine(DATABASE_URL)
+engine=create_async_engine(DATABASE_URL, echo=True)
+
+
 
 
 

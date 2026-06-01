@@ -1,6 +1,6 @@
 from app.models.workspace import Workspace
 from app.models.user import User
-from app.models.otp import OTP 
+from app.schemas.user_schema import UserOut
 from app.models.refresh_token import RefreshToken
 from app.core.security import hash_password, verify_password, create_jwt_token, create_refresh_token
 from app.templates.otp_email import otp_email_template
@@ -12,101 +12,124 @@ from app.schemas.auth_schema import OTPInput,LoginOut
 from fastapi import HTTPException, status
 from app.core.redis_client import redis_client as redis
 from app.schemas.response_schema import APIResponse
-from app.models.refresh_token import RefreshToken
+from sqlalchemy import select,delete
+from sqlalchemy.orm import selectinload
 
 
-
-def register_user_service(registerData, db):
+async def register_user_service(registerData, db):
     print(registerData)
+    try:
+        result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.email==registerData.email))
+        existing_email=result.scalars().first()
 
-    existing_email=db.query(User).filter(User.email==registerData.email).first()
+        if existing_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
 
-    if existing_email:
-        return {"message": "Email already exists"}
+        workSpaceData={
+            "name": registerData.workspaceName,
+            "owner_id" : None
+        }
 
-    workSpaceData={
-        "name": registerData.workspaceName,
-        "owner_id" : None
-    }
+        workspace=Workspace(**workSpaceData)
+        db.add(workspace)
+        await db.flush()
 
-    workspace=Workspace(**workSpaceData)
-    db.add(workspace)
-    db.flush()
+        hashed_password=hash_password(registerData.password)
+        
+        userData={
+            "name": registerData.name,
+            "email": registerData.email,
+            "password": hashed_password,
+            "workspace_id": workspace.id,
+            "email_verified": False,
+            "role": registerData.role
+        }
 
-    hashed_password=hash_password(registerData.password)
+        user=User(**userData)
+        db.add(user)
+        await db.flush()
+
+        workspace.owner_id=user.id
+        await db.commit()
+        await db.refresh(user)
+        print("user", user)
+
+        return APIResponse(
+            message="Registered successfully",
+            data=UserOut.model_validate(user),
+            status=status.HTTP_201_CREATED
+        )
+    except Exception as e:
+        print(e)
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to register user")
+
+
+
+async def verify_email_service(email, db):
     
-    userData={
-        "name": registerData.name,
-        "email": registerData.email,
-        "password": hashed_password,
-        "workspace_id": workspace.id,
-        "email_verified": False
-    }
-
-    user=User(**userData)
-    db.add(user)
-    db.flush()
-
-    workspace.owner_id=user.id
-    db.commit()
-
-    return {"message": "success", "data": registerData}
-
-
-def verify_email_service(email, db):
     otp=generate_otp()
     print("otp", otp)
     html_content=otp_email_template(otp)
 
-    response=send_email_task.delay(email, "Email Verification", html_content)
-    print("response", response)
-    if response:
-        redis.set(f"email_verification:{email}", otp, ex=300)
-        return {"message": "Email sent successfully"}
-    else:
-        return {"message": "Email sending failed"}
+    try:
+        send_email_task.delay(email, "Email Verification", html_content)
+        await redis.set(f"email_verification:{email}", otp, ex=300)
+        return APIResponse(message="Email sent successfully", status=status.HTTP_200_OK)
+    except Exception as e:
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Email sending failed")
     
-def verify_otp_service(OtpData: OTPInput,db):
+async def verify_otp_service(OtpData: OTPInput,db):
 
-    existing_otp=redis.get(f"email_verification:{OtpData.email}")
+    existing_otp=await redis.get(f"email_verification:{OtpData.email}")
     print("existing_otp", existing_otp, OtpData.code)
 
     if existing_otp == None:
-        return {"message": "Otp expired"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
     
-    if existing_otp==OtpData.code:
+    if str(existing_otp) == str(OtpData.code):
         print("existing_otp.matched")
         try:
-            user_query=db.query(User).filter(User.email==OtpData.email)
+            result=await db.execute(select(User).where(User.email==OtpData.email))
+            user=result.scalars().first()
             
-            if user_query.first() == None:
-                return {"message": "User not found"}
+            if user==None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
             
-            print("user_query", user_query.first())
+            print("user", user)
             
-            user_query.update({"email_verified": True }, synchronize_session=False)
+            user.email_verified=True
+            db.add(user)
+            await db.commit()
+            await redis.delete(f"email_verification:{OtpData.email}")
+            return APIResponse(message="Email verified successfully", 
+                               status=status.HTTP_200_OK)
+        
+        except HTTPException:
+            await db.rollback()
+            raise
 
-            db.commit()
-            return {"message": "Otp verified success"}
         except Exception as e:
             print(e)
-            db.rollback()
-            return {"message": "Otp verification failed"}
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify email")
     else:
-        return {"message": "Invalid OTP"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
 
 
-def login_Service(loginData,db):
+async def login_service(loginData,db):
     email=loginData.email
     password=loginData.password
 
-    existing_user=db.query(User).filter(User.email==email).first()
+    result=await db.execute(select(User).where(User.email==email))
+    existing_user=result.scalars().first()
 
     if existing_user == None:
-        return {"message": "User not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     if existing_user.email_verified == False:
-        return {"message": "Email not verified, please verify your email"}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email not verified")
     
     if verify_password(password, existing_user.password) == False:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password")
@@ -122,10 +145,11 @@ def login_Service(loginData,db):
 
     try:
         db.add(RefreshToken(**refresh_Token_data))
-        db.commit()
+        await db.commit()
     except Exception as e:
         print(e)
-        db.rollback()
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to login")
 
     login_data={
         "access_token": access_token,
@@ -136,78 +160,99 @@ def login_Service(loginData,db):
     return APIResponse(message="Login successful", 
                        data= LoginOut.model_validate(login_data), status=status.HTTP_200_OK)
 
-def refresh_token_Service(data:dict, db):
+async def refresh_token_service(data:dict, db):
     refresh_token=data.refresh_token
 
-    existing_token=db.query(RefreshToken).filter((RefreshToken.token==refresh_token) & RefreshToken.is_invoked==False).first()
+    result=await db.execute(select(RefreshToken).where(RefreshToken.token==refresh_token, RefreshToken.is_invoked==False))
+    existing_token=result.scalars().first()
 
     if existing_token == None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, details="Invalid refresh token") 
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") 
     
     if datetime.now(timezone.utc) > existing_token.expired_at:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, details="Expired refresh token") 
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired refresh token") 
     
-    access_token=create_jwt_token({"user_id":existing_token.user_id})
+    access_token=create_jwt_token({"user_id":existing_token.user_id, "workspace_id":existing_token.workspace_id})
 
-    return {"message": "Success", "data": {"access_token": access_token, "token_type": "Bearer"}}
+    return APIResponse(message="Token refreshed successfully", 
+                       data={"access_token": access_token, "token_type": "Bearer"},
+                         status=status.HTTP_200_OK)
     
 
-def change_password_service(data, db, current_user):
+async def change_password_service(data, db, current_user):
     old_password=data.old_password
     new_password=data.new_password
 
     if verify_password(old_password, current_user.password) == False:
-        return {"message": "Invalid old password"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password")
     
     current_user.password=hash_password(new_password)
-    db.commit()
+    db.add(current_user)
+    await db.commit()
 
-    return {"message": "Password changed successfully"}
+    return APIResponse(message="Password changed successfully", 
+                       status=status.HTTP_200_OK)
 
-def forget_password_service(email):
+async def forgot_password_service(email, db):
     otp=generate_otp()
 
-    html_content=html_content(otp)
+    html_content=otp_email_template(otp)
+    try:
+        result=await db.execute(select(User).where(User.email==email))
+        existing_user=result.scalars().first()
 
-    send_email_task.delay(email, "Forget Password", html_content)
-    redis.set(f"forget_password:{email}", otp, ex=300)
+        if existing_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+        send_email_task.delay(email, "Forgot Password", html_content)
+        await redis.set(f"forgot_password:{email}", otp, ex=300)
+        return APIResponse(message="OTP sent successfully", status=status.HTTP_200_OK)
+    
+    except HTTPException:
+        raise
 
-    return {"message": "OTP sent to your email successfully"}
+    except Exception as e:
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send OTP")
 
-def reset_password_service(data,db):
+async def reset_password_service(data,db):
     otp=data.otp
     new_password=data.new_password
-    email=data.emil
+    email=data.email
 
-    stored_otp=redis.get(f"forgot_password:{email}")
+    stored_otp=await redis.get(f"forgot_password:{email}")
 
-    if stored_otp != otp:
+    if str(stored_otp) != str(otp):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
     
-    existing_user=db.query(User).filter(User.email==email)
+    result=await db.execute(select(User).where(User.email==email))
+    existing_user=result.scalars().first()
 
     if existing_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     try:
         existing_user.password=hash_password(new_password)
-        db.commit()
+        await db.commit()
+        await redis.delete(f"forgot_password:{email}")
     except Exception as e:
         print("Error", e)
-        db.rollback()
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reset password")
     
-    return {"message": "Password reset successfully"}
+    return APIResponse(message="Password reset successfully", status=status.HTTP_200_OK)
 
-def set_password_service(data, db):
+async def set_password_service(data, db):
     password=data.password
     secret_token=data.secret_token
 
-    email=redis.get(f"invite_token:{secret_token}")
+    email=await redis.get(f"invite_token:{secret_token}")
 
     if email is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
     
-    user=db.query(User).filter(User.email==email).first()
+    result=await db.execute(select(User).where(User.email==email))
+    user=result.scalars().first()
 
 
     if user is None:
@@ -223,16 +268,18 @@ def set_password_service(data, db):
 
     try:
         print("row.password", password)
-        db.query(RefreshToken).filter(RefreshToken.user_id==user.id).delete(synchronize_session=False)
+        await db.execute(delete(RefreshToken).where(RefreshToken.user_id==user.id))
         user.password=hash_password(password)
         print("user.password", user.password)
         user.email_verified=True
         db.add(RefreshToken(**refresh_Token_data))
         db.add(user)
-        db.commit()
+        await db.commit()
+        await redis.delete(f"invite_token:{secret_token}")
     except Exception as e:
         print("Error", e)
-        db.rollback()
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set password")
 
     login_data={
         "access_token": access_token,

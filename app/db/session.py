@@ -1,5 +1,9 @@
 from app.core.database import engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-SessionLocal=sessionmaker(bind=engine,autocommit=False, autoflush=False)
+AsyncSessionLocal=sessionmaker(bind=engine,
+                               class_=AsyncSession,
+                               expire_on_commit=False
+                               )
 

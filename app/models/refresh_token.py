@@ -1,13 +1,15 @@
 from app.db.base import Base
-from sqlalchemy import Column,Integer, String, Boolean, DateTime, text, ForeignKey
+from sqlalchemy import func, text, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+from datetime import datetime
 
 class RefreshToken(Base):
     __tablename__="refresh_tokens"
 
-    id=Column(Integer, nullable=False, primary_key=True)
-    user_id=Column(Integer,ForeignKey("users.id"),nullable=False, index=True)
-    token=Column(String, nullable=False)
-    expired_at=Column(DateTime(timezone=True), nullable=False)
-    is_invoked=Column(Boolean, nullable=False, server_default=text("false"))
-    created_at=Column(DateTime(timezone=True), nullable=False, server_default=text("now()") )
-    updated_at=Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()"))
+    id:         Mapped[int] = mapped_column(primary_key=True)
+    user_id:    Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"),index=True)
+    token:      Mapped[str] = mapped_column()
+    expired_at: Mapped[datetime] = mapped_column()
+    is_invoked: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
