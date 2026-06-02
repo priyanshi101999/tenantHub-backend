@@ -2,6 +2,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends,HTTPException, status
 from app.core.security import verify_token
 from app.models.enums import Role
+from app.models.plan import Plan
 from app.models.user import User
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,5 +43,18 @@ def require_role(role:Role):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to perform this action")
         return current_user
     return checker
+
+def check_plan(plan):
+    async def checker(db:AsyncSession=Depends(get_db), current_user=Depends(get_current_user)):
+        result=await db.execute(select(Plan).where(Plan.id==current_user.workspace.plan_id))
+        current_plan=result.scalars().first()
+
+        if current_plan.name not in plan:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can not perform this action with your current plan")
+        
+        return current_user
+    
+    return checker
+
 
 

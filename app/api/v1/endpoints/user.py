@@ -18,8 +18,8 @@ async def invite_user(data:InviteUser, db:AsyncSession=Depends(get_db), current_
     return await invite_user_service(data, db)
 
 @router.get("/list", status_code=200, response_model=APIResponse)
-async def user_list(db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):
-    return await user_list_service(db, current_user)
+async def user_list(page: int = Query(1, gte=1), size: int = Query(10, gte=1, lte=100), db: AsyncSession = Depends(get_db), current_user: User = Depends(require_role(Role.ADMIN))):
+    return await user_list_service(page, size, db, current_user)
 
 @router.delete("/", status_code=200, response_model=APIResponse)
 async def delete_user(id:int=Query(...),db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):

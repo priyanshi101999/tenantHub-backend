@@ -37,3 +37,11 @@ class TaskUpdate(BaseModel):
     assignee_id: Optional[int] = None
 
     model_config=ConfigDict(from_attributes=True)
+
+class AttachmentOut(BaseModel):
+    id: int
+    file_name: str
+    file_path: str
+    task_id: int
+
+    model_config=ConfigDict(from_attributes=True)

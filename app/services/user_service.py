@@ -9,8 +9,9 @@ from app.core.config import settings
 from app.tasks.email_task import send_email_task
 from app.templates.invite_mail import get_invite_email_template
 from fastapi import status, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
+import math
 
 
 async def add_user_service(data, db, current_user):
@@ -88,20 +89,30 @@ async def invite_user_service(data, db):
         status=status.HTTP_200_OK
     )
 
-async def user_list_service(db, current_user):
+async def user_list_service(page: int, size: int, db, current_user: User):
     
     workspace_id=current_user.workspace_id
 
     if current_user.role !=Role.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You not have access")
     
-    result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER))
+    result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER).limit(size).offset((page-1)*size))
     user_list=result.scalars().all()
+    count_result=await db.execute(select(func.count(User.id)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER))
+    total_items=count_result.scalar()
     data=[UserOut.model_validate(u) for u in user_list]
 
     return APIResponse(
         message="User List fetched successfully",
-        data=data,
+            data={
+                "users": data,
+                "pagination": {
+                "page": page,
+                "size": size,
+                "total_pages": math.ceil(total_items/size),
+                "total_items": total_items
+                }
+        },
         status=200
     )
         
