@@ -13,3 +13,9 @@ class TaskStatus(str, enum.Enum):
     TODO="TODO"
     IN_PROGRESS="IN_PROGRESS"
     DONE="DONE"
+
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE="ACTIVE"
+    INACTIVE="INACTIVE"
+    CANCELED="CANCELED"
+    PAST_DUE="PAST_DUE"

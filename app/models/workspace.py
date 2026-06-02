@@ -11,6 +11,7 @@ class Workspace(Base):
     name:        Mapped[str] = mapped_column(String(255), unique=True)
     description: Mapped[str|None] = mapped_column(Text, nullable=True)
     owner_id:    Mapped[int|None]  = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    stripe_customer_id: Mapped[str|None] = mapped_column(String(255), nullable=True)
     is_deleted:    Mapped[bool] = mapped_column(default=False)
     is_active:    Mapped[bool] = mapped_column(default=True)
     plan_id:     Mapped[int|None] = mapped_column(ForeignKey("plans.id", ondelete="SET NULL"), nullable=True)
