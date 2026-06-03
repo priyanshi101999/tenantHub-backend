@@ -11,8 +11,6 @@ class TaskInput(BaseModel):
     due_date: Optional[datetime.datetime] = None
     assignee_id: Optional[int] = None
 
-    model_config=ConfigDict(from_attributes=True)
-
 class TaskOut(BaseModel):
     id: int
     title: str
@@ -28,6 +26,7 @@ class TaskOut(BaseModel):
 
     model_config=ConfigDict(from_attributes=True)
 
+
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
@@ -36,7 +35,7 @@ class TaskUpdate(BaseModel):
     due_date: Optional[datetime.datetime] = None
     assignee_id: Optional[int] = None
 
-    model_config=ConfigDict(from_attributes=True)
+
 
 class AttachmentOut(BaseModel):
     id: int

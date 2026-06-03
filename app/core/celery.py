@@ -3,8 +3,8 @@ from app.core.config import settings
 
 celery=Celery(
     "worker",
-    broker=f"redis://{settings.redis_host}:{settings.redis_port}/0",
-    backend=f"redis://{settings.redis_host}:{settings.redis_port}/0"
+    broker=f"redis://{settings.redis_host}:6379/0",
+    backend=f"redis://{settings.redis_host}:6379/0"
 )
 
 celery.conf.update(
@@ -18,3 +18,4 @@ celery.conf.update(
 celery.autodiscover_tasks(["app.tasks"])
 
 import app.tasks.email_task
+import app.tasks.stripe_task

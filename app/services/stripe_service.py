@@ -1,12 +1,16 @@
+from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from app.models.subscription import Subscription
 from app.models.user import User
 from app.core.stripe_config import stripe
 from app.core.config import settings
 from app.models.plan import Plan
 from app.models.workspace import Workspace
 from app.schemas.response_schema import APIResponse
+from app.schemas.subscription_schema import SubscriptionCancelOut
+from app.tasks.stripe_task import process_Stripe_event
 
 async def get_stripe_customer_id(workspace,user, db):
     try:
@@ -52,17 +56,31 @@ async def create_subscription_service(plan_id, db, current_user):
 
         customer_id = await get_stripe_customer_id(workspace, admin_user, db)
 
-        subscription = stripe.Subscription.create(
+        Stripe_subscription = stripe.Subscription.create(
             customer=customer_id,
             items=[{"price": plan.stripe_price_id}],
-            expand=["latest_invoice.payment_intent"],
+            expand=["latest_invoice.confirmation_secret"],
             payment_behavior="default_incomplete"
         )
 
+        print("Stripe_subscription.current_period_end",Stripe_subscription)
+
+        subscription = Subscription(
+            stripe_subscription_id=Stripe_subscription.id,
+            workspace_id=workspace.id,
+            plan_id=plan.id,
+            subscription_item_id=Stripe_subscription.items.data[0].id,
+            current_period_end= datetime.fromtimestamp(Stripe_subscription.items.data[0].current_period_end) ,
+        )
+
+        db.add(subscription)
+        await db.commit()
+        await db.refresh(subscription)
+        
         return APIResponse(
             status=200,
             message="Subscription created successfully",
-            data={"subscription_id": subscription.id, "client_secret": subscription.latest_invoice.payment_intent.client_secret}
+            data={"subscription_id": Stripe_subscription.id, "client_secret": Stripe_subscription.latest_invoice.confirmation_secret.client_secret}
         )
     
     except HTTPException:
@@ -73,8 +91,9 @@ async def create_subscription_service(plan_id, db, current_user):
         await db.rollback()
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create subscription")
-    
-async def webhook_service(request, db, current_user):
+
+  
+async def webhook_service(request, db):
     signature = request.headers.get("Stripe-Signature")
     payload = await request.body()
 
@@ -84,10 +103,132 @@ async def webhook_service(request, db, current_user):
         settings.stripe_webhook_secret
     ) 
 
+    event = event.to_dict()
+    print("webhook_service.event",event)
+    process_Stripe_event.delay(event)
+
     return {"ok":True}
 
 
+async def cancel_subscription_service(db, current_user):
+    try:
+        workspace_query = await db.execute(select(Workspace).where(Workspace.id == current_user.workspace_id))
+        workspace = workspace_query.scalars().first()
 
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Workspace not found")
+   
+        result = await db.execute(select(Subscription).where(Subscription.workspace_id == workspace.id))
+        subscription = result.scalars().first()
+
+        if subscription is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Subscription not found")
         
+        if subscription.cancel_at_period_end:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, details="Subscription already cancelled")
         
- 
+        stripe.Subscription.modify(subscription.stripe_subscription_id, cancel_at_period_end=True)
+
+        subscription.cancel_at_period_end = True
+        db.add(subscription)
+        await db.commit()
+        await db.refresh(subscription)
+
+        return APIResponse(
+            status=200,
+            message="Subscription cancelled successfully",
+            data=SubscriptionCancelOut.model_validate(subscription)
+        )
+    
+    except HTTPException:
+        await db.rollback()
+        raise
+    
+    except Exception as e:
+        await db.rollback()
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to cancel subscription")
+        
+async def update_subscription_service(plan_id,db, current_user):
+
+    try:
+        result = await db.execute(select(Workspace).where(Workspace.id == current_user.workspace_id))
+        workspace = result.scalars().first()
+
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Workspace not found")
+        
+        plan_query = await db.execute(select(Plan).where(Plan.id == plan_id))
+        plan = plan_query.scalars().first()
+
+        if plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Plan not found")
+        
+        subscription_query = await db.execute(select(Subscription).where(Subscription.workspace_id == workspace.id))
+        subscription = subscription_query.scalars().first()
+
+        if subscription is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Subscription not found")
+        
+        stripe_subscription = stripe.Subscription.modify(subscription.stripe_subscription_id,
+                                                          items=[{"id": subscription.subscription_item_id, "price": plan.stripe_price_id}],
+                                                          proration_behavior="create_prorations"
+                                                          )
+        print("stripe_subscription",stripe_subscription.items.data[0].current_period_end)
+        subscription.plan_id = plan_id
+        subscription.stripe_subscription_id = stripe_subscription.id
+        subscription.current_period_end = datetime.fromtimestamp(stripe_subscription.items.data[0].current_period_end)
+        db.add(subscription)
+        await db.commit()
+        await db.refresh(subscription)
+
+        return APIResponse(
+            status=200,
+            message="Subscription updated successfully",
+            data=SubscriptionCancelOut.model_validate(subscription)
+        )
+    
+    except HTTPException:
+        await db.rollback()
+        raise
+    
+    except Exception as e:
+        await db.rollback()
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update subscription")
+
+async def confirm_payment_service(db, current_user):
+    try:
+
+        result = await db.execute(select(Subscription).where(Subscription.workspace_id == current_user.workspace_id))
+        subscription = result.scalars().first()
+
+        if subscription is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
+        stripe_sub = stripe.Subscription.retrieve(subscription.stripe_subscription_id,expand=["latest_invoice.confirmation_secret"])
+
+        if stripe_sub.status == "paid":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subscription already paid")
+
+        payment_intent_id = stripe_sub.latest_invoice.confirmation_secret.client_secret.split("_secret_")[0]
+
+        response = stripe.PaymentIntent.confirm(payment_intent_id,payment_method="pm_card_visa")
+
+        print("response",response)
+       
+        if response.status != "succeeded":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to confirm payment")
+        
+        return APIResponse(
+            status=200,
+            message="Payment confirmed successfully"
+        )
+    
+    except HTTPException:
+        await db.rollback()
+        raise
+    
+    except Exception as e:
+        await db.rollback()
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to confirm payment")
