@@ -73,17 +73,27 @@ async def create_subscription_service(plan_id, db, current_user):
 
         print("Stripe_subscription.current_period_end",Stripe_subscription)
 
-        subscription = Subscription(
-            stripe_subscription_id=Stripe_subscription.id,
-            workspace_id=workspace.id,
-            plan_id=plan.id,
-            subscription_item_id=Stripe_subscription.items.data[0].id,
-            status=SubscriptionStatus.INCOMPLETE
-        )
+        if subscription is None:
+            new_subscription = Subscription(
+                stripe_subscription_id=Stripe_subscription.id,
+                workspace_id=workspace.id,
+                plan_id=plan.id,
+                subscription_item_id=Stripe_subscription.items.data[0].id,
+                status=SubscriptionStatus.INCOMPLETE,
+                cancel_at_period_end=False
+            )
 
-        db.add(subscription)
+            db.add(new_subscription)
+        else:
+            subscription.plan_id=plan.id
+            subscription.subscription_item_id=Stripe_subscription.items.data[0].id
+            subscription.status=SubscriptionStatus.INCOMPLETE
+            subscription.cancel_at_period_end=False
+            workspace_id=workspace.id
+
+            db.add(subscription)
+
         await db.commit()
-        await db.refresh(subscription)
         
         return APIResponse(
             status=200,
@@ -201,7 +211,7 @@ async def update_subscription_service(plan_id,db, current_user):
                                                             proration_behavior="none"
                                                             )
             subscription.pending_plan_id=plan_id
-            subscription.pending_change_type="downgrade"
+            subscription.pending_change_type="DOWNGRADE"
             message = "Downgrade scheduled for next billing cycle"
 
         db.add(subscription)
@@ -222,22 +232,8 @@ async def update_subscription_service(plan_id,db, current_user):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update subscription")
 
 
-async def confirm_payment_service(db, current_user):
+async def confirm_payment_service(payment_intent_id,db, current_user):
     try:
-
-        result = await db.execute(select(Subscription).where(Subscription.workspace_id == current_user.workspace_id))
-        subscription = result.scalars().first()
-
-        if subscription is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
-        
-        stripe_sub = stripe.Subscription.retrieve(subscription.stripe_subscription_id,expand=["latest_invoice.payment_intent"])
-
-        payment_intent=stripe_sub.payment_intent
-        if payment_intent.status == "succeeded":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subscription already paid")
-
-        payment_intent_id = payment_intent.id
 
         response = stripe.PaymentIntent.confirm(payment_intent_id,payment_method="pm_card_visa")
 

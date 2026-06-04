@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
-from app.schemas.auth_schema import ChangePassword
+from app.schemas.auth_schema import ChangePassword, FCMTokenInput, LogoutInput
 from app.schemas.auth_schema import SetPasswordInput,Register, EmailInput, OTPInput, LoginInput,RefreshToken,ResetPassword
 from app.models.user import User
-from app.services.auth_service import verify_email_service, verify_otp_service, register_user_service,login_service,refresh_token_service,change_password_service,forgot_password_service,reset_password_service,set_password_service
+from app.services.auth_service import logout_service, save_fcm_token_service, verify_email_service, verify_otp_service, register_user_service,login_service,refresh_token_service,change_password_service,forgot_password_service,reset_password_service,set_password_service
 from app.api.deps import get_current_user
 from app.schemas.response_schema import APIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,3 +48,10 @@ async def reset_password(data:ResetPassword, db:AsyncSession=Depends(get_db)):
 async def set_password(data:SetPasswordInput, db:AsyncSession=Depends(get_db)):
     return await set_password_service(data, db)
 
+@router.post("/logout", status_code=200, response_model=APIResponse)
+async def logout(data:LogoutInput, db:AsyncSession=Depends(get_db), current_user: User=Depends(get_current_user)):
+    return await logout_service(data, db, current_user)
+
+@router.post("/save-fcm-token", status_code=200, response_model=APIResponse)
+async def save_fcm_token(data:FCMTokenInput, db:AsyncSession=Depends(get_db), current_user: User=Depends(get_current_user)):
+    return await save_fcm_token_service(data, db, current_user)

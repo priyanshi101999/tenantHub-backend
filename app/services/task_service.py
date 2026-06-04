@@ -3,6 +3,7 @@ from datetime import datetime
 from app.models.task import Task
 from fastapi import status, HTTPException
 from app.models.task_attachment import TaskAttachment
+from app.models.user_device import UserDevice
 from app.schemas.task_schema import AttachmentOut, TaskOut
 from app.schemas.response_schema import APIResponse
 from app.core.plan_features import PLAN_FEATURES
@@ -12,6 +13,8 @@ from app.models.plan import Plan
 from sqlalchemy.orm import selectinload
 import os,shutil
 import math
+
+from app.tasks.notification_task import send_notification_task
 
 async def check_plan(current_plan_id, db, current_user):
         result=await db.execute(select(Plan).where(Plan.id==current_plan_id))
@@ -53,7 +56,14 @@ async def create_task_service(data, db, current_user):
 
         if assignee==None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignee not found in your workspace")
-    
+        
+        user_device_query=await db.execute(select(UserDevice).where(UserDevice.user_id==assignee.id))
+        user_device=user_device_query.scalars().all()
+
+        for device in user_device:
+            if device.fcm_token is not None:
+                send_notification_task.delay(device.fcm_token, "New Task Assigned", "You have been assigned a new task", task_data)
+
     try:
         task = Task(**task_data)
         db.add(task)
@@ -91,11 +101,30 @@ async def update_task_service(id,data, db, current_user):
             result=await db.execute(select(User).where(User.id==update_data["assignee_id"], User.workspace_id==current_user.workspace_id))
             assignee=result.scalars().first()
 
+            user_device_query=await db.execute(select(UserDevice).where(UserDevice.user_id==assignee.id))
+            user_device=user_device_query.scalars().all()
+
+            for device in user_device:
+                if device.fcm_token is not None:
+                    send_notification_task.delay(device.fcm_token, "New Task Assigned", "You have been assigned a new task")
+
             if assignee==None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignee not found in your workspace")
         
         for field, value in update_data.items():
             setattr(existing_task, field, value)
+
+        if update_data["status"] is not None:
+            user_device_query=await db.execute(select(UserDevice).where(UserDevice.user_id==existing_task.created_by))
+            user_device=user_device_query.scalars().all()
+
+            for device in user_device:
+                if device.fcm_token is not None:
+                    if update_data["status"] == "DONE":
+                        send_notification_task.delay(device.fcm_token, "Task Completed", "Your task has been completed")
+                    if update_data["status"] == "IN_PROGRESS":
+                        send_notification_task.delay(device.fcm_token, "Task In Progress", "Your task is in progress")
+
         
         db.add(existing_task)
         await db.commit()

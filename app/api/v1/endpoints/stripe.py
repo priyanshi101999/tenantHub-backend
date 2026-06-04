@@ -24,8 +24,8 @@ async def cancel_subscription(db:AsyncSession=Depends(get_db), current_user:User
     return await cancel_subscription_service(db, current_user)
 
 @router.post("/payment", status_code=201, response_model=APIResponse)
-async def confirm_payment(db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
-    return await confirm_payment_service(db, current_user)
+async def confirm_payment(payment_intent_id:str=Query(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
+    return await confirm_payment_service(payment_intent_id,db, current_user)
 
 @router.post("/subscription/update", status_code=201, response_model=APIResponse)
 async def update_subscription(plan_id:int=Query(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):

@@ -7,3 +7,4 @@ from .task_attachment import TaskAttachment
 from .plan import Plan
 from .subscription import Subscription
 from .event import StripeEvent
+from .user_device import UserDevice

@@ -57,9 +57,14 @@ async def handle_event(event):
                 subscription.current_period_end = datetime.fromtimestamp(
                     data["lines"]["data"][0]["period"]["end"]
                 )
+
+                if subscription.pending_change_type == "DOWNGRADE":
+                    subscription.plan_id = subscription.pending_plan_id
+                    subscription.pending_change_type = None
+                    subscription.pending_plan_id = None
+                
                 db.add(subscription)
-                await db.flush()
-                await db.commit()
+
 
             if event["type"] == "invoice.payment_failed":
                 stripe_subscription_id = data["parent"]["subscription_details"]["subscription"]
@@ -70,9 +75,9 @@ async def handle_event(event):
                 if subscription is None:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
 
-                subscription.status = "PAST_DUE"
+                subscription.status = SubscriptionStatus.PAST_DUE
                 db.add(subscription)
-                await db.commit()
+
 
             if event["type"] == "customer.subscription.updated":
                 stripe_subscription_id = data["id"]
@@ -83,10 +88,11 @@ async def handle_event(event):
                 if subscription is None:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
 
-                subscription.status = SubscriptionStatus.ACTIVE
+                if data.status == "active":
+                    subscription.status = SubscriptionStatus.ACTIVE
                 subscription.current_period_end = datetime.fromtimestamp(data["items"]["data"][0]["current_period_end"])
                 db.add(subscription)
-                await db.commit()
+
 
             if event["type"] == "customer.subscription.deleted":
                 stripe_subscription_id = data["id"]
@@ -97,9 +103,9 @@ async def handle_event(event):
                 if subscription is None:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
 
-                subscription.status = "CANCELED"
+                subscription.status = SubscriptionStatus.CANCELED
                 db.add(subscription)
-                await db.commit()
+
 
             stripe_event.processed = True
             db.add(stripe_event)

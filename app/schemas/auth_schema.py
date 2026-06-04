@@ -37,3 +37,12 @@ class LoginOut(BaseModel):
     access_token: str
     token_type: str
     refresh_token: str
+    user: dict
+
+class LogoutInput(BaseModel):
+    refresh_token: str
+    device_id: str
+
+class FCMTokenInput(BaseModel):
+    fcm_token: str
+    device_id: str

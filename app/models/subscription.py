@@ -12,7 +12,7 @@ class Subscription(Base):
     plan_id:                Mapped[int] = mapped_column(ForeignKey("plans.id"))
     stripe_subscription_id: Mapped[str] = mapped_column(String(255))
     subscription_item_id:   Mapped[str] = mapped_column(String(255))
-    current_period_end:     Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    current_period_end:     Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end:   Mapped[bool] = mapped_column(default=False)
     pending_plan_id:        Mapped[int|None] = mapped_column(nullable=True)
     pending_change_type:    Mapped[str|None] = mapped_column(nullable=True)

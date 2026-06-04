@@ -1,3 +1,4 @@
+from app.models.user_device import UserDevice
 from app.models.workspace import Workspace
 from app.models.user import User
 from app.schemas.user_schema import UserOut
@@ -168,10 +169,16 @@ async def login_service(loginData,db):
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to login")
 
+
     login_data={
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "Bearer"
+        "token_type": "Bearer",
+        "user": {
+            "id": existing_user.id,
+            "name": existing_user.name,
+            "email": existing_user.email
+        }
     }
 
     return APIResponse(message="Login successful", 
@@ -308,8 +315,64 @@ async def set_password_service(data, db):
                        data= LoginOut.model_validate(login_data), status=status.HTTP_200_OK)
 
 
+async def logout_service(data,db, current_user):
+    try:
+        result=await db.execute(select(RefreshToken).where(RefreshToken.token==data.refresh_token))
+        refresh_token=result.scalars().first()
 
-   
+        if refresh_token is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") 
+        
+        refresh_token.is_invoked=True
+        db.add(refresh_token)
+
+        user_device_query=await db.execute(select(UserDevice).where(UserDevice.user_id==current_user.id, UserDevice.device_id==data.device_id))
+        user_device=user_device_query.scalars().first()
+        user_device.is_active=False
+        db.add(user_device)
+        await db.commit()
+        
+
+        return APIResponse(message="Logout successful", status=status.HTTP_200_OK)
+    except Exception as e:
+        print("Error", e)
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to logout")
+    
+    
+async def save_fcm_token_service(data, db, current_user):
+    
+    try:
+        result=await db.execute(select(UserDevice).where(UserDevice.user_id==current_user.id, UserDevice.device_id==data.device_id))
+        existing_device=result.scalars().first()
+
+        if existing_device is None:
+            device_data={
+                "user_id": current_user.id,
+                "device_id": data.device_id,
+                "fcm_token": data.fcm_token,
+                "is_active": True
+            }
+
+            db.add(UserDevice(**device_data))
+        
+        else:
+            existing_device.fcm_token=data.fcm_token
+            db.add(existing_device)
+        
+        await db.commit()
+
+        return APIResponse(message="FCM token saved successfully", status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("Error", e)
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save FCM token")
+
+
+
+
+
 
 
 
