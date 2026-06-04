@@ -14,6 +14,8 @@ class Subscription(Base):
     subscription_item_id:   Mapped[str] = mapped_column(String(255))
     current_period_end:     Mapped[datetime] = mapped_column(DateTime(timezone=True))
     cancel_at_period_end:   Mapped[bool] = mapped_column(default=False)
+    pending_plan_id:        Mapped[int|None] = mapped_column(nullable=True)
+    pending_change_type:    Mapped[str|None] = mapped_column(nullable=True)
     status:                 Mapped[SubscriptionStatus] = mapped_column(Enum(SubscriptionStatus),default=SubscriptionStatus.INCOMPLETE)
     created_at:             Mapped[datetime] = mapped_column(DateTime(timezone=True),default=func.now())
     updated_at:             Mapped[datetime] = mapped_column(DateTime(timezone=True),default=func.now(), onupdate=func.now())

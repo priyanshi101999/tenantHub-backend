@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime
-from http.client import HTTPException
+from fastapi import HTTPException
 
 from sqlalchemy import select
 from fastapi import status
@@ -11,14 +11,14 @@ from app.models.enums import SubscriptionStatus
 from app.models.event import StripeEvent
 from app.models.subscription import Subscription
 
-@celery.task(bind=True, max_retries=3)
+@celery.task(bind=True, 
+             max_retries=3, 
+             autoretry_for=(Exception,), 
+             retry_jitter=True, 
+             retry_backoff=True, 
+             retry_backoff_max=60)
 def process_Stripe_event(self, event):
-    try:
-        asyncio.run(handle_event(event))
-    except Exception as e:
-        self.retry(exc=e, countdown=10)
-
-
+    asyncio.run(handle_event(event))
 
 async def handle_event(event):
     
@@ -84,7 +84,7 @@ async def handle_event(event):
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
 
                 subscription.status = SubscriptionStatus.ACTIVE
-                subscription.current_period_end = datetime.fromtimestamp(data["current_period_end"])
+                subscription.current_period_end = datetime.fromtimestamp(data["items"]["data"][0]["current_period_end"])
                 db.add(subscription)
                 await db.commit()
 

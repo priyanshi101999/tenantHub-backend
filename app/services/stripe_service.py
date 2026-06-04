@@ -2,6 +2,7 @@ from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from app.models.enums import SubscriptionStatus
 from app.models.subscription import Subscription
 from app.models.user import User
 from app.core.stripe_config import stripe
@@ -53,6 +54,13 @@ async def create_subscription_service(plan_id, db, current_user):
 
         if admin_user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Admin user not found")
+        
+        subscription_query=await db.execute(select(Subscription).where(Subscription.workspace_id == current_user.workspace_id))
+        subscription=subscription_query.scalars().first()
+
+        if subscription != None and not subscription.cancel_at_period_end:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
+                                detail="An active subscription already exists. Please update your current subscription to change plans.")
 
         customer_id = await get_stripe_customer_id(workspace, admin_user, db)
 
@@ -70,7 +78,7 @@ async def create_subscription_service(plan_id, db, current_user):
             workspace_id=workspace.id,
             plan_id=plan.id,
             subscription_item_id=Stripe_subscription.items.data[0].id,
-            current_period_end= datetime.fromtimestamp(Stripe_subscription.items.data[0].current_period_end) ,
+            status=SubscriptionStatus.INCOMPLETE
         )
 
         db.add(subscription)
@@ -168,24 +176,40 @@ async def update_subscription_service(plan_id,db, current_user):
         subscription = subscription_query.scalars().first()
 
         if subscription is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, details="Subscription not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
         
-        stripe_subscription = stripe.Subscription.modify(subscription.stripe_subscription_id,
-                                                          items=[{"id": subscription.subscription_item_id, "price": plan.stripe_price_id}],
-                                                          proration_behavior="create_prorations"
-                                                          )
-        print("stripe_subscription",stripe_subscription.items.data[0].current_period_end)
-        subscription.plan_id = plan_id
-        subscription.stripe_subscription_id = stripe_subscription.id
-        subscription.current_period_end = datetime.fromtimestamp(stripe_subscription.items.data[0].current_period_end)
+        current_plan_query=await db.execute(select(Plan).where(Plan.id == subscription.plan_id))
+        current_plan=current_plan_query.scalars().first()
+
+        if subscription.plan_id == plan_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already subscribed to this plan")
+
+        if plan.price > current_plan.price:
+            stripe_subscription = stripe.Subscription.modify(subscription.stripe_subscription_id,
+                                                            items=[{"id": subscription.subscription_item_id, "price": plan.stripe_price_id}],
+                                                            proration_behavior="create_prorations"
+                                                            )
+            subscription.plan_id=plan_id
+            subscription.pending_plan_id=None
+            subscription.pending_change_type=None
+
+            message = "Subscription upgraded successfully"
+            
+        else:
+            stripe_subscription = stripe.Subscription.modify(subscription.stripe_subscription_id,
+                                                            items=[{"id": subscription.subscription_item_id, "price": plan.stripe_price_id}],
+                                                            proration_behavior="none"
+                                                            )
+            subscription.pending_plan_id=plan_id
+            subscription.pending_change_type="downgrade"
+            message = "Downgrade scheduled for next billing cycle"
+
         db.add(subscription)
         await db.commit()
-        await db.refresh(subscription)
-
+            
         return APIResponse(
             status=200,
-            message="Subscription updated successfully",
-            data=SubscriptionCancelOut.model_validate(subscription)
+            message=message
         )
     
     except HTTPException:
@@ -197,6 +221,7 @@ async def update_subscription_service(plan_id,db, current_user):
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update subscription")
 
+
 async def confirm_payment_service(db, current_user):
     try:
 
@@ -205,12 +230,14 @@ async def confirm_payment_service(db, current_user):
 
         if subscription is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
-        stripe_sub = stripe.Subscription.retrieve(subscription.stripe_subscription_id,expand=["latest_invoice.confirmation_secret"])
+        
+        stripe_sub = stripe.Subscription.retrieve(subscription.stripe_subscription_id,expand=["latest_invoice.payment_intent"])
 
-        if stripe_sub.status == "paid":
+        payment_intent=stripe_sub.payment_intent
+        if payment_intent.status == "succeeded":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subscription already paid")
 
-        payment_intent_id = stripe_sub.latest_invoice.confirmation_secret.client_secret.split("_secret_")[0]
+        payment_intent_id = payment_intent.id
 
         response = stripe.PaymentIntent.confirm(payment_intent_id,payment_method="pm_card_visa")
 
