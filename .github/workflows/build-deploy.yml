@@ -71,7 +71,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: build and push
-        uses: uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./dockerfile
@@ -81,7 +81,7 @@ jobs:
             GIT_AUTH_TOKEN=${{secrets.MYTOKEN}}
 
   deploy:
-    needs: build
+    needs: [build]
     runs-on: ubuntu-latest
     environment: production
 
