@@ -26,6 +26,12 @@ async def register_user_service(registerData, db):
 
         if existing_email:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+
+        existing_phone_query=await db.execute(select(User).options(selectinload(User.workspace)).where(User.phone==registerData.phone))
+        existing_phone=existing_phone_query.scalars().first()
+
+        if existing_phone:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone number already exists")
         
         existing_workspace_query=await db.execute(select(Workspace).where(Workspace.name==registerData.workspaceName))
         existing_workspace=existing_workspace_query.scalars().first()
