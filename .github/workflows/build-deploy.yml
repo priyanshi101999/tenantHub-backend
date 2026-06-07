@@ -86,6 +86,9 @@ jobs:
     environment: production
 
     steps:
+      - name: pull code
+        uses: actions/checkout@v6
+        
       - name: deploy on render
       - uses: givemomentum/render-deploy@v1.5.1
         with:
