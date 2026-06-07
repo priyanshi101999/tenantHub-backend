@@ -56,7 +56,7 @@ jobs:
           context: .
           file: ./dockerfile
           push: true
-          tags: ${{secrets.DOCKER_USERNAME}}/tananthub:latest
+          tags: ${{secrets.DOCKER_USERNAME}}/tenanthub:latest
           secrets: |
             GIT_AUTH_TOKEN=${{secrets.MYTOKEN}}
 
