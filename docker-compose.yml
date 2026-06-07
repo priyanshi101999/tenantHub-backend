@@ -1,8 +1,9 @@
 services:
   api:
     build: .
+    image: myapp-image
     ports:
-      - 8000:8000
+      - "8000:8000"
     depends_on:
       - db
       - redis
@@ -11,34 +12,46 @@ services:
       - .:/app
     env_file:
       - .env
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: always
     
   db:
     image: postgres:16
     ports:
-      - 5433:5432
+      - "5433:5432"
     env_file:
       - .env
     volumes:
       - postgres-db:/var/lib/postgresql/data
+    restart: always
 
   redis:
     image: redis:7.4
     ports:
-      - 6378:6379
-    env_file:
-      - .env
+      - "6379:6379"
     volumes:
       - redis-data:/data
+    restart: always
 
   celery:
-    build: .
+    image: myapp-image
     env_file:
       - .env
-    command: celery -A app.core.celery.celery worker --loglevel=info --pool=solo
+    command: celery -A app.core.celery.celery_app worker --loglevel=info --concurrency=1
     depends_on: 
       - db
       - redis
+    restart: always
+  
+  celery_beat:
+    image: myapp-image
+    env_file:
+      - .env
+    command: celery -A app.core.celery.celery_app beat --loglevel=info
+    depends_on:
+      - db
+      - redis
+    restart: always
 
 volumes:
   postgres-db:

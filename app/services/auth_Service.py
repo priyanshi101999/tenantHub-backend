@@ -15,6 +15,7 @@ from app.core.redis_client import redis_client as redis
 from app.schemas.response_schema import APIResponse
 from sqlalchemy import select,delete
 from sqlalchemy.orm import selectinload
+from app.core.twilio_config import client
 
 
 async def register_user_service(registerData, db):
@@ -49,7 +50,8 @@ async def register_user_service(registerData, db):
             "password": hashed_password,
             "workspace_id": workspace.id,
             "email_verified": False,
-            "role": registerData.role
+            "role": registerData.role,
+            "phone": registerData.phone
         }
 
         user=User(**userData)
@@ -368,11 +370,52 @@ async def save_fcm_token_service(data, db, current_user):
         print("Error", e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save FCM token")
+    
+
+async def send_otp_service(phone):
+
+    try:
+        verification=client.verify.v2.services(settings.twilio_service_sid).verifications.create(to=phone, channel="sms")
+
+        if verification.status != "pending":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to send OTP")
+        return APIResponse(message="OTP sent successfully", status=200)
+
+    except Exception as e:
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send OTP")
 
 
+async def verify_phone_Service(data, db):
+    code=data.code
+    phone=data.phone
 
+    try:
+        verification=client.verify.v2.services(settings.twilio_service_sid).verification_checks.create(to=phone, code=code)
 
+        if verification.status != "approved":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
+        
+        result=await db.execute(select(User).where(User.phone==phone))
+        user=result.scalars().first()
 
+        if user is not None:      
+            user.phone_verified=True
+            db.add(user)
+            await db.commit()
+        
+        return APIResponse(message="Phone number verified successfully", status=status.HTTP_200_OK)
+    
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify phone number")
+
+    
+
+   
 
 
 

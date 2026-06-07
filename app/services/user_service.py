@@ -144,6 +144,35 @@ async def delete_user_service(id, db, current_user):
         await db.rollback()
         print("error", e)
         raise HTTPException(status_code=500, detail="Failed to delete user")
+
+
+async def get_user_service(id,db,current_user):
+
+    try:
+
+        result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.id==id, User.is_deleted==False))
+        existing_user=result.scalars().first()
+
+        if existing_user==None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+        if existing_user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You can not get user from other workspace")
+        
+        return APIResponse(
+            message="User fetched successfully",
+            data=UserOut.model_validate(existing_user),
+            status=status.HTTP_200_OK
+        )
+    
+    except HTTPException:
+        await db.rollback()
+        raise
+    
+    except Exception as e:
+        await db.rollback()
+        print("error", e)
+        raise HTTPException(status_code=500, detail="Failed to get user")
     
 
 

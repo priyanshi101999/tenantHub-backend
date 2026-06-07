@@ -46,3 +46,10 @@ class LogoutInput(BaseModel):
 class FCMTokenInput(BaseModel):
     fcm_token: str
     device_id: str
+
+class PhoneInput(BaseModel):
+    phone: str
+
+class VerifyPhoneInput(BaseModel):
+    phone: str
+    code: str

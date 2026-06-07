@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from app.api.deps import get_db
-from app.schemas.auth_schema import ChangePassword, FCMTokenInput, LogoutInput
+from app.schemas.auth_schema import ChangePassword, FCMTokenInput, LogoutInput, PhoneInput, VerifyPhoneInput
 from app.schemas.auth_schema import SetPasswordInput,Register, EmailInput, OTPInput, LoginInput,RefreshToken,ResetPassword
 from app.models.user import User
-from app.services.auth_service import logout_service, save_fcm_token_service, verify_email_service, verify_otp_service, register_user_service,login_service,refresh_token_service,change_password_service,forgot_password_service,reset_password_service,set_password_service
+from app.services.auth_service import logout_service, save_fcm_token_service, send_otp_service, verify_email_service, verify_otp_service, register_user_service,login_service,refresh_token_service,change_password_service,forgot_password_service,reset_password_service,set_password_service, verify_phone_Service
 from app.api.deps import get_current_user
 from app.schemas.response_schema import APIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +32,6 @@ async def refresh_token(data:RefreshToken, db:AsyncSession=Depends(get_db)):
 
 @router.post("/change-password", status_code=200, response_model=APIResponse)
 async def change_password(data:ChangePassword, db:AsyncSession=Depends(get_db), current_user: User=Depends(get_current_user)):
-    
     return await change_password_service(data, db, current_user)
 
 @router.post("/forgot-password", status_code=200, response_model=APIResponse)
@@ -55,3 +53,12 @@ async def logout(data:LogoutInput, db:AsyncSession=Depends(get_db), current_user
 @router.post("/save-fcm-token", status_code=200, response_model=APIResponse)
 async def save_fcm_token(data:FCMTokenInput, db:AsyncSession=Depends(get_db), current_user: User=Depends(get_current_user)):
     return await save_fcm_token_service(data, db, current_user)
+
+@router.post("/send-otp", status_code=200, response_model=APIResponse)
+async def send_otp(data:PhoneInput):
+    return await send_otp_service(data.phone)
+
+@router.post("/verify-phone", status_code=200, response_model=APIResponse)
+async def verify_phone(data:VerifyPhoneInput, db:AsyncSession=Depends(get_db)):
+    return await verify_phone_Service(data, db)
+

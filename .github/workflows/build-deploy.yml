@@ -1,0 +1,100 @@
+name: build and deploy
+
+on: ["push"]
+
+jobs:
+  build:
+    environment: testing
+    env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        POSTGRES_USER: ${{ secretes.POSTGRES_USER }}
+        POSTGRES_DB: ${{ secretes.POSTGRES_DB }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        SENDER_MAIL: ${{ secrets.SENDER_MAIL }}
+        OTP_EXPIRE_MINUTES: ${{ secrets.OTP_EXPIRE_MINUTES }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        ALGORITHM: ${{ secrets.ALGORITHM }}
+        ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}
+        REFRESH_TOKEN_EXPIRE_DAYS: ${{ secrets.REFRESH_TOKEN_EXPIRE_DAYS }}
+        REDIS_HOST: ${{ secrets.REDIS_HOST }}
+        REDIS_PORT: ${{ secrets.REDIS_PORT }}
+        FRONTEND_BASEURL: ${{ secrets.FRONTEND_BASEURL }}
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TWILIO_SERVICE_SID: ${{ secrets.TWILIO_SERVICE_SID }}
+    
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image:postgres
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_USER: ${{ secretes.POSTGRES_USER }}
+          POSTGRES_DB: ${{ secretes.POSTGRES_DB }}_test
+        ports:
+          5432:5432
+        option: >-
+          --health-cmd "py-isready -U postgres -d $POSTGRES_DB"
+          --health-interval 60
+          --health-timeout 10
+          --health-retries 5
+
+    steps:
+      - name: pull code
+        uses: actions/checkout@v6
+      - name: setup python
+        uses: actions/setup-python@v6
+        with:
+          python-version:"3.11.9"
+      - name: install pip
+        run:  python -m pip install --upgrade pip
+      - name: install dependencies
+        run: pip install -r requirements.txt
+      - name: run test cases
+        run:  |
+          pip install pytest
+          pytest 
+      
+      - name: docker login
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: set up Docker buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: build and push
+        uses: uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./dockerfile
+          push: true
+          tags: ${{secrets.DOCKER_USERNAME}}/tananthub:latest
+          secret: |
+            GIT_AUTH_TOKEN=${{secrets.MYTOKEN}}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: deploy on render
+      - uses: givemomentum/render-deploy@v1.5.1
+        with:
+          service_id: ${{ secrets.RENDER_SERVICE_ID }} 
+          api_key: ${{ secrets.RENDER_API_KEY }} 
+      
+
+
+        
+ 
+        
+

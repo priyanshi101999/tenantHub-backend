@@ -8,6 +8,7 @@ class UserInput(BaseModel):
     email: str
     role: Optional[str] = "USER"
     workspace_id: int
+    phone: str
 
 class WorkspaceOut(BaseModel):
     id: int

@@ -1,5 +1,4 @@
-from datetime import datetime
-
+from datetime import datetime, timezone
 from app.models.task import Task
 from fastapi import status, HTTPException
 from app.models.task_attachment import TaskAttachment
@@ -10,7 +9,6 @@ from app.core.plan_features import PLAN_FEATURES
 from sqlalchemy import case, func, select
 from app.models.user import User
 from app.models.plan import Plan
-from sqlalchemy.orm import selectinload
 import os,shutil
 import math
 
@@ -36,8 +34,6 @@ async def check_plan(current_plan_id, db, current_user):
         
         return True
         
-
-
 async def create_task_service(data, db, current_user):
     allowed=await check_plan(current_user.workspace.plan_id, db, current_user)
 
@@ -144,7 +140,8 @@ async def update_task_service(id,data, db, current_user):
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update task")
 
-async def get_tasks_service( db, current_user, page, size, task_status, priority, overdue, assignee_id):
+async def get_task_list__service( db, current_user, page, size, task_status, priority, overdue, assignee_id):
+    
     try:
         if page < 1 or size < 1 or size > 100:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid pagination parameters")
@@ -161,7 +158,7 @@ async def get_tasks_service( db, current_user, page, size, task_status, priority
             query=query.where(Task.assignee_id==assignee_id)
 
         if overdue:
-            query=query.where(Task.due_date < datetime.utcnow(), Task.status != "DONE")
+            query=query.where(Task.due_date < datetime.now(timezone.utc), Task.status != "DONE")
 
         result=await db.execute(query.order_by(Task.created_at.desc()).limit(size).offset((page-1)*size))
         tasks=result.scalars().all()
@@ -178,7 +175,7 @@ async def get_tasks_service( db, current_user, page, size, task_status, priority
             count_result=count_result.where(Task.assignee_id==assignee_id)
 
         if overdue:
-            count_result=count_result.where(Task.due_date < datetime.utcnow(), Task.status != "DONE")
+            count_result=count_result.where(Task.due_date < datetime.now(timezone.utc), Task.status != "DONE")
         
         total_items=(await db.execute(count_result)).scalar()
 
@@ -249,7 +246,6 @@ async def attach_file_Service(task_id,file, db, current_user):
         await db.rollback()
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to attach file")
-    
 
 async def get_analytics_service(db, current_user):
     try:
@@ -258,7 +254,7 @@ async def get_analytics_service(db, current_user):
             func.sum(case((Task.status=="TODO",1),else_=0)).label("todo"),
             func.sum(case((Task.status=="IN_PROGRESS",1),else_=0)).label("in_progress"),
             func.sum(case((Task.status=="DONE", 1), else_=0)).label("done"),
-            func.sum(case((Task.due_date <datetime.utcnow(),1), else_=0)).label("overdue")
+            func.sum(case((Task.due_date <datetime.now(timezone.utc),1), else_=0)).label("overdue")
         ).where(Task.workspace_id==current_user.workspace_id, Task.is_deleted==False)
         
         result=await db.execute(query)
@@ -280,3 +276,28 @@ async def get_analytics_service(db, current_user):
         await db.rollback()
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve analytics")
+    
+async def get_task_service(id, db, current_user):
+    try:
+        result=await db.execute(select(Task).where(Task.id==id, Task.workspace_id==current_user.workspace_id, Task.is_deleted==False))
+        task=result.scalars().first()
+
+        if task==None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        
+        return APIResponse(
+            message="Task retrieved successfully",
+            status=status.HTTP_200_OK,
+            data=TaskOut.model_validate(task)
+        )
+    
+    except HTTPException:
+        await db.rollback()
+        raise
+
+    except Exception as e:
+        await db.rollback()
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve task")
+
+    

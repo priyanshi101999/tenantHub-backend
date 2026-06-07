@@ -4,7 +4,7 @@ from app.models.enums import Role
 from app.models.user import User
 from app.schemas.user_schema import UserInput,InviteUser
 from app.schemas.response_schema import APIResponse
-from app.services.user_service import add_user_service, delete_user_service, invite_user_service,user_list_service
+from app.services.user_service import add_user_service, delete_user_service, get_user_service, invite_user_service,user_list_service
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router=APIRouter(prefix="/user", tags=["User"])
@@ -25,6 +25,8 @@ async def user_list(page: int = Query(1, gte=1), size: int = Query(10, gte=1, lt
 async def delete_user(id:int=Query(...),db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):
     return await delete_user_service(id,db, current_user)
 
-
+@router.get("/", status_code=200, response_model=APIResponse)
+async def get_user(id:int=Query(...),db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):
+    return await get_user_service(id, db, current_user)
 
 

@@ -5,13 +5,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from fastapi import status
 from app.api.deps import get_db
-from app.core.celery import celery
+from app.core.celery import celery_app
 from app.db.session import AsyncSessionLocal
 from app.models.enums import SubscriptionStatus
 from app.models.event import StripeEvent
 from app.models.subscription import Subscription
 
-@celery.task(bind=True, 
+@celery_app.task(bind=True, 
              max_retries=3, 
              autoretry_for=(Exception,), 
              retry_jitter=True, 
