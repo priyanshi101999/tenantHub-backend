@@ -102,6 +102,9 @@ async def verify_email_service(email, db):
         send_email_task.delay(email, "Email Verification", html_content)
         await redis.set(f"email_verification:{email}", otp, ex=300)
         return APIResponse(message="Email sent successfully", status=status.HTTP_200_OK)
+    
+    except HTTPException:
+        raise
     except Exception as e:
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Email sending failed")
@@ -172,6 +175,10 @@ async def login_service(loginData,db):
     try:
         db.add(RefreshToken(**refresh_Token_data))
         await db.commit()
+
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         print(e)
         await db.rollback()
