@@ -88,9 +88,9 @@ jobs:
     steps:
       - name: pull code
         uses: actions/checkout@v6
-        
+
       - name: deploy on render
-      - uses: givemomentum/render-deploy@v1.5.1
+        uses: givemomentum/render-deploy@v1.5.1
         with:
           service_id: ${{ secrets.RENDER_SERVICE_ID }} 
           api_key: ${{ secrets.RENDER_API_KEY }} 
