@@ -32,14 +32,14 @@ jobs:
 
     services:
       postgres:
-        image:postgres
+        image: postgres
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_USER: ${{ secretes.POSTGRES_USER }}
           POSTGRES_DB: ${{ secretes.POSTGRES_DB }}_test
         ports:
           5432:5432
-        option: >-
+        options: >-
           --health-cmd "py-isready -U postgres -d $POSTGRES_DB"
           --health-interval 60
           --health-timeout 10
