@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     twilio_account_sid:str
     twilio_auth_token:str
     twilio_service_sid:str
+    redis_url:str
     
     class Config:
         env_file=".env"

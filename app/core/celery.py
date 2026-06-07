@@ -4,7 +4,7 @@ from celery.schedules import crontab
 
 celery_app=Celery(
     "worker",
-    broker=f"redis://{settings.redis_host}:6379/0",
+    broker=settings.redis_url,
     backend=None
 )
 
