@@ -38,7 +38,7 @@ jobs:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}_test
         ports:
-          5432:5432
+          - 5432:5432
         options: >-
           --health-cmd "py-isready -U postgres -d $POSTGRES_DB"
           --health-interval 60
@@ -51,7 +51,7 @@ jobs:
       - name: setup python
         uses: actions/setup-python@v6
         with:
-          python-version:"3.11.9"
+          python-version: "3.11.9"
       - name: install pip
         run:  python -m pip install --upgrade pip
       - name: install dependencies
