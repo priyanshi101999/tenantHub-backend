@@ -69,11 +69,12 @@ jobs:
       - name: pull code
         uses: actions/checkout@v6
 
-      - name: deploy on render
-        uses: givemomentum/render-deploy@v1.5.1
+      - name: Deploy to render
+        uses: johnbeynon/render-deploy-action@v0.0.8
         with:
-          service_id: ${{ secrets.RENDER_SERVICE_ID }} 
-          api_key: ${{ secrets.RENDER_API_KEY }} 
+          service-id: ${{ secrets.RENDER_SERVICE_ID  }}
+          api-key: ${{ secrets.RENDER_API_KEY  }}
+          wait-for-success: true
       
 
 
