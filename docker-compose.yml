@@ -1,61 +1,81 @@
 services:
   api:
     build: .
-    image: myapp-image
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - redis
-      - celery
-    volumes:
-      - .:/app
+      db:
+          condition: service_healthy
+      redis:
+          condition: service_healthy
     env_file:
       - .env
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: >
+      gunicorn app.main:app 
+      -k uvicorn.workers.UvicornWorker
+      -w 4
+      -b 0.0.0.0:8000
     restart: always
-    
+    heathcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  
   db:
-    image: postgres:16
+    image:postgres:16
     ports:
       - "5433:5432"
     env_file:
       - .env
     volumes:
-      - postgres-db:/var/lib/postgresql/data
+      - postgres_db:/var/lib/postgresql/data
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   redis:
-    image: redis:7.4
+    image:redis:7.4
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - redis_data:/data
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   celery:
-    image: myapp-image
+    build: .
     env_file:
       - .env
-    command: celery -A app.core.celery.celery_app worker --loglevel=info --concurrency=1
-    depends_on: 
-      - db
-      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.core.celery.celery_app worker --loglevel=info --concurrency=4
     restart: always
-  
-  celery_beat:
-    image: myapp-image
+
+  celery-beat:
+    build: .
     env_file:
       - .env
     command: celery -A app.core.celery.celery_app beat --loglevel=info
     depends_on:
-      - db
-      - redis
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     restart: always
 
-volumes:
-  postgres-db:
-  redis-data:
 
-   
-   
+volumes:
+  postgres_db:
+  redis_data:
+    

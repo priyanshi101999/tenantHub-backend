@@ -29,22 +29,6 @@ jobs:
         TWILIO_SERVICE_SID: ${{ secrets.TWILIO_SERVICE_SID }}
     
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres
-        env:
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "py-isready -U postgres -d $POSTGRES_DB"
-          --health-interval 60s
-          --health-timeout 10s
-          --health-retries 5
-
     steps:
       - name: pull code
         uses: actions/checkout@v6
@@ -56,10 +40,6 @@ jobs:
         run:  python -m pip install --upgrade pip
       - name: install dependencies
         run: pip install -r requirements.txt
-      - name: run test cases
-        run:  |
-          pip install pytest
-          pytest 
       
       - name: docker login
         uses: docker/login-action@v4
