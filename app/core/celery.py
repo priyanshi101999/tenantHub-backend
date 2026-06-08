@@ -5,7 +5,7 @@ from celery.schedules import crontab
 celery_app=Celery(
     "worker",
     broker=settings.redis_url,
-    backend=None
+    backend=settings.redis_url
 )
 
 celery_app.conf.update(
