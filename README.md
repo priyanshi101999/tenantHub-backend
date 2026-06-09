@@ -2,6 +2,21 @@
 
 TenantHub is a FastAPI backend for a multi-tenant task and workspace management platform. It supports workspace registration, JWT authentication, plan-based subscription limits, Stripe billing, file uploads, email and push notifications, and background processing.
 
+## Tech Stack
+
+- FastAPI
+- SQLAlchemy async ORM
+- PostgreSQL
+- Alembic
+- Redis
+- Celery and Celery Beat
+- Stripe
+- Firebase Admin SDK
+- SendGrid
+- Twilio
+- Pytest
+- Docker Compose
+
 ## Features
 
 - Workspace registration with a dynamic Free plan assignment from the database
@@ -18,21 +33,6 @@ TenantHub is a FastAPI backend for a multi-tenant task and workspace management 
 - Optional no-Celery mode for hosted demos using in-process background dispatch
 - Pytest coverage for API endpoints, services, and business logic
 - GitHub Actions build/test/deploy workflow
-
-## Tech Stack
-
-- FastAPI
-- SQLAlchemy async ORM
-- PostgreSQL
-- Alembic
-- Redis
-- Celery and Celery Beat
-- Stripe
-- Firebase Admin SDK
-- SendGrid
-- Twilio
-- Pytest
-- Docker Compose
 
 ## Backend Skills Demonstrated
 
@@ -291,4 +291,3 @@ celery -A app.core.celery.celery_app beat --loglevel=info
 ```
 
 For interview/demo deployments, Celery services can be skipped by leaving `USE_CELERY=false`.
-
