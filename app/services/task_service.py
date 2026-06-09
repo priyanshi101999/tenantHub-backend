@@ -107,8 +107,14 @@ async def create_task_service(data, db, current_user):
         task = Task(**task_data)
         db.add(task)
         await db.commit()
-        await db.refresh(task)
-        task.attachments = []
+        task_id = task.id
+
+        result = await db.execute(
+            select(Task)
+            .options(selectinload(Task.attachments.and_(TaskAttachment.is_deleted == False)))
+            .where(Task.id == task_id)
+        )
+        task = result.scalars().first()
 
         if assignee is not None:
             await send_task_push_notifications(

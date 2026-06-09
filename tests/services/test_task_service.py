@@ -73,7 +73,22 @@ async def test_check_plan_success(free_plan, current_user):
 
 
 async def test_create_task_service_success(free_plan, current_user):
-    db = FakeDB(FakeResult(first=free_plan), FakeResult(scalar=0))
+    created_task = Task(
+        id=1,
+        workspace_id=current_user.workspace_id,
+        title="Replace filter",
+        description="HVAC filter",
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        created_by=current_user.id,
+        assignee_id=None,
+        due_date=None,
+        is_deleted=False,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    created_task.attachments = []
+    db = FakeDB(FakeResult(first=free_plan), FakeResult(scalar=0), FakeResult(first=created_task))
     data = TaskInput(title="Replace filter", description="HVAC filter")
 
     response = await task_service.create_task_service(data, db, current_user)
