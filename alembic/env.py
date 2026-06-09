@@ -11,7 +11,13 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("+asyncpg", ""))
+# Alembic uses psycopg2, not asyncpg
+db_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+
+# asyncpg uses ssl=require, psycopg2 uses sslmode=require
+db_url = db_url.replace("?ssl=require", "?sslmode=require")
+db_url = db_url.replace("&ssl=require", "&sslmode=require")
+config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
