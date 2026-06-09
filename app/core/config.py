@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     twilio_auth_token:str
     twilio_service_sid:str
     use_celery: bool = False
+    firebase_service_account_path: str = "firebase_service_account.json"
+    firebase_service_account_json: str | None = None
     
     class Config:
         env_file=".env"

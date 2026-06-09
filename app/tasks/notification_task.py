@@ -1,8 +1,10 @@
 from app.core.celery import celery_app
-import app.core.firebase_config
+from app.core.firebase_config import initialize_firebase_app
 from firebase_admin import messaging
 
 def send_notification(token: str, title: str, body: str, data: dict = None):
+    initialize_firebase_app()
+
     message=messaging.Message(
         notification=messaging.Notification(
             title=title,
