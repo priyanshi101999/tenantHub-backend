@@ -111,9 +111,6 @@ async def invite_user_service(data, db):
     )
 
 async def user_list_service(page: int, size: int, db, current_user: User):
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You not have access")
-    
     workspace_id=current_user.workspace_id
 
     result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER).limit(size).offset((page-1)*size))

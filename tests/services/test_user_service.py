@@ -81,15 +81,15 @@ async def test_user_list_service_success(current_user, user):
     assert response.data["users"][0].email == user.email
 
 
-async def test_user_list_service_requires_admin(current_user):
+async def test_user_list_service_allows_regular_user(current_user, user):
     current_user.role = Role.USER
-    db = FakeDB()
+    db = FakeDB(FakeResult(all_items=[user]), FakeResult(scalar=1))
 
-    with pytest.raises(HTTPException) as exc_info:
-        await user_service.user_list_service(page=1, size=10, db=db, current_user=current_user)
+    response = await user_service.user_list_service(page=1, size=10, db=db, current_user=current_user)
 
-    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-    assert exc_info.value.detail == "You not have access"
+    assert response.status == status.HTTP_200_OK
+    assert response.data["pagination"]["total_items"] == 1
+    assert response.data["users"][0].email == user.email
 
 
 @pytest.mark.parametrize(
