@@ -19,10 +19,6 @@ async def add_user_service(data, db, current_user):
     data = data.model_dump()
 
     try:
-        requested_workspace_id = data.pop("workspace_id", None)
-        if requested_workspace_id is not None and requested_workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only add users to your own workspace")
-
         result = await db.execute(select(User).options(selectinload(User.workspace)).where(User.email == data["email"]))
         existing_user=result.scalars().first()
 

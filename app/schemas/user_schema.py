@@ -34,7 +34,6 @@ class UserInput(EmailValidatedModel, PhoneRequiredModel):
     email: str
     role: Optional[str] = "USER"
     phone: str
-    workspace_id: Optional[int] = None
 
 class WorkspaceOut(BaseModel):
     id: int
