@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from app.api.deps import get_db, require_role
+from app.api.deps import get_current_user, get_db, require_role
 from app.models.enums import Role
 from app.models.user import User
 from app.schemas.user_schema import UserInput,InviteUser
@@ -18,7 +18,7 @@ async def invite_user(data:InviteUser, db:AsyncSession=Depends(get_db), current_
     return await invite_user_service(data, db)
 
 @router.get("/list", status_code=200, response_model=APIResponse)
-async def user_list(page: int = Query(1, gte=1), size: int = Query(10, gte=1, lte=100), db: AsyncSession = Depends(get_db), current_user: User = Depends(require_role(Role.ADMIN))):
+async def user_list(page: int = Query(1, gte=1), size: int = Query(10, gte=1, lte=100), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     return await user_list_service(page, size, db, current_user)
 
 @router.delete("/", status_code=200, response_model=APIResponse)
@@ -26,7 +26,7 @@ async def delete_user(id:int=Query(...),db:AsyncSession=Depends(get_db), current
     return await delete_user_service(id,db, current_user)
 
 @router.get("/", status_code=200, response_model=APIResponse)
-async def get_user(id:int=Query(...),db:AsyncSession=Depends(get_db), current_user:User=Depends(require_role(Role.ADMIN))):
+async def get_user(id:int=Query(...),db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
     return await get_user_service(id, db, current_user)
 
 

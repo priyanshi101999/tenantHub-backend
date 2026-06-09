@@ -1,4 +1,5 @@
 from app.models.enums import Role
+from app.models.plan import Plan
 from app.models.user import User
 from fastapi import HTTPException, status
 from app.schemas.response_schema import APIResponse
@@ -6,7 +7,7 @@ from app.schemas.user_schema import UserOut, InviteUserOut
 from app.core.redis_client import redis_client as redis
 from app.utils.secret_key import generate_invite_token
 from app.core.config import settings
-from app.tasks.email_task import send_email_task
+from app.core.task_dispatcher import dispatch_email
 from app.templates.invite_mail import get_invite_email_template
 from fastapi import status, HTTPException
 from sqlalchemy import select, func
@@ -16,14 +17,14 @@ import math
 
 async def add_user_service(data, db, current_user):
     data = data.model_dump()
+    print("data", data)
+    print("current_user", current_user.workspace_id)
 
     try:
-        if current_user.workspace_id != data["workspace_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only add users to your own workspace"
-            )
-        
+        requested_workspace_id = data.pop("workspace_id", None)
+        if requested_workspace_id is not None and requested_workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only add users to your own workspace")
+
         result = await db.execute(select(User).options(selectinload(User.workspace)).where(User.email == data["email"]))
         existing_user=result.scalars().first()
 
@@ -33,7 +34,34 @@ async def add_user_service(data, db, current_user):
                 detail="User already exists"
             )
 
-        user = User(**data)
+        existing_phone_query = await db.execute(select(User).where(User.phone == data["phone"]))
+        existing_phone = existing_phone_query.scalars().first()
+
+        if existing_phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone number already exists"
+            )
+
+        plan_query = await db.execute(select(Plan).where(Plan.id == current_user.workspace.plan_id))
+        current_plan = plan_query.scalars().first()
+
+        if current_plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+        user_count_query = await db.execute(
+            select(func.count(User.id)).where(
+                User.workspace_id == current_user.workspace_id,
+                User.is_deleted == False,
+                User.role == Role.USER
+            )
+        )
+        user_count = user_count_query.scalar()
+
+        if user_count >= current_plan.max_users:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You have reached the maximum number of users for this plan")
+
+        user = User(**data, workspace=current_user.workspace)
         db.add(user)
         await db.commit()
         await db.refresh(user, attribute_names=["workspace"])
@@ -76,7 +104,7 @@ async def invite_user_service(data, db):
 
     html_template=get_invite_email_template(invite_link, "24 hours")
 
-    send_email_task.delay(email, "Invite User", html_template)
+    dispatch_email(email, "Invite User", html_template)
 
     output_data={
         "email": email,
@@ -90,12 +118,11 @@ async def invite_user_service(data, db):
     )
 
 async def user_list_service(page: int, size: int, db, current_user: User):
+    if current_user.role != Role.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You not have access")
     
     workspace_id=current_user.workspace_id
 
-    if current_user.role !=Role.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You not have access")
-    
     result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER).limit(size).offset((page-1)*size))
     user_list=result.scalars().all()
     count_result=await db.execute(select(func.count(User.id)).where(User.workspace_id==workspace_id, User.is_deleted==False,User.role==Role.USER))
@@ -123,7 +150,7 @@ async def delete_user_service(id, db, current_user):
     
     user_id=id
 
-    result=await db.execute(select(User).where(User.id==user_id, User.isDeleted==False))
+    result=await db.execute(select(User).where(User.id==user_id, User.is_deleted==False))
     existing_user=result.scalars().first()
 
     if existing_user==None:
@@ -133,7 +160,7 @@ async def delete_user_service(id, db, current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You can not delete user from other workspace")
     
     try:
-        existing_user.isDeleted=True
+        existing_user.is_deleted=True
         db.add(existing_user)
         await db.commit()
         return APIResponse(

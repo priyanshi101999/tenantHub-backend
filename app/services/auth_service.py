@@ -1,11 +1,13 @@
 from app.models.user_device import UserDevice
+from app.models.plan import Plan
 from app.models.workspace import Workspace
 from app.models.user import User
 from app.schemas.user_schema import UserOut
 from app.models.refresh_token import RefreshToken
 from app.core.security import hash_password, verify_password, create_jwt_token, create_refresh_token
+from app.core.plan_features import PLAN_FEATURES
 from app.templates.otp_email import otp_email_template
-from app.tasks.email_task import send_email_task
+from app.core.task_dispatcher import dispatch_email
 from app.utils.secret_key import generate_otp
 from datetime import datetime, timedelta, timezone
 from app.core.config import settings
@@ -39,9 +41,16 @@ async def register_user_service(registerData, db):
         if existing_workspace:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Workspace already exists")
 
+        free_plan_query = await db.execute(select(Plan).where(Plan.name == "FREE"))
+        free_plan = free_plan_query.scalars().first()
+
+        if free_plan is None:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Free plan is not configured")
+
         workSpaceData={
             "name": registerData.workspaceName,
-            "owner_id" : None
+            "owner_id" : None,
+            "plan_id": free_plan.id
         }
 
         workspace=Workspace(**workSpaceData)
@@ -99,7 +108,7 @@ async def verify_email_service(email, db):
         if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         
-        send_email_task.delay(email, "Email Verification", html_content)
+        dispatch_email(email, "Email Verification", html_content)
         await redis.set(f"email_verification:{email}", otp, ex=300)
         return APIResponse(message="Email sent successfully", status=status.HTTP_200_OK)
     
@@ -192,7 +201,8 @@ async def login_service(loginData,db):
         "user": {
             "id": existing_user.id,
             "name": existing_user.name,
-            "email": existing_user.email
+            "email": existing_user.email,
+            "role": existing_user.role
         }
     }
 
@@ -243,7 +253,7 @@ async def forgot_password_service(email, db):
         if existing_user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
-        send_email_task.delay(email, "Forgot Password", html_content)
+        dispatch_email(email, "Forgot Password", html_content)
         await redis.set(f"forgot_password:{email}", otp, ex=300)
         return APIResponse(message="OTP sent successfully", status=status.HTTP_200_OK)
     
@@ -255,7 +265,7 @@ async def forgot_password_service(email, db):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send OTP")
 
 async def reset_password_service(data,db):
-    otp=data.otp
+    otp=data.code
     new_password=data.new_password
     email=data.email
 
@@ -323,7 +333,13 @@ async def set_password_service(data, db):
     login_data={
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "Bearer"
+        "token_type": "Bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role
+        }
     }
 
     return APIResponse(message="set password successful", 
@@ -358,6 +374,15 @@ async def logout_service(data,db, current_user):
 async def save_fcm_token_service(data, db, current_user):
     
     try:
+        plan_query = await db.execute(select(Plan).where(Plan.id == current_user.workspace.plan_id))
+        current_plan = plan_query.scalars().first()
+
+        if current_plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+        if not PLAN_FEATURES.get(current_plan.name.upper(), {}).get("push_notifications", False):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Push notifications are not available on your current plan")
+
         result=await db.execute(select(UserDevice).where(UserDevice.user_id==current_user.id, UserDevice.device_id==data.device_id))
         existing_device=result.scalars().first()
 
@@ -373,11 +398,16 @@ async def save_fcm_token_service(data, db, current_user):
         
         else:
             existing_device.fcm_token=data.fcm_token
+            existing_device.is_active=True
             db.add(existing_device)
         
         await db.commit()
 
         return APIResponse(message="FCM token saved successfully", status=status.HTTP_200_OK)
+
+    except HTTPException:
+        await db.rollback()
+        raise
 
     except Exception as e:
         print("Error", e)

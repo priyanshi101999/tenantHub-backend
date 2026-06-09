@@ -167,7 +167,8 @@ async def test_get_analytics_service_success(current_user):
 
 async def test_attach_file_service_success(tmp_path, monkeypatch, task, current_user, pdf_file):
     monkeypatch.chdir(tmp_path)
-    db = FakeDB(FakeResult(first=task))
+    pro_plan = SimpleNamespace(name="PRO")
+    db = FakeDB(FakeResult(first=task), FakeResult(first=pro_plan))
 
     response = await task_service.attach_file_Service(1, pdf_file, db, current_user)
 

@@ -11,10 +11,12 @@ from app.models.workspace import Workspace
 
 
 notification_task_stub = ModuleType("app.tasks.notification_task")
+notification_task_stub.send_notification = lambda *args, **kwargs: None
 notification_task_stub.send_notification_task = SimpleNamespace(delay=lambda *args, **kwargs: None)
 sys.modules["app.tasks.notification_task"] = notification_task_stub
 
 email_task_stub = ModuleType("app.tasks.email_task")
+email_task_stub.send_email = lambda *args, **kwargs: None
 email_task_stub.send_email_task = SimpleNamespace(delay=lambda *args, **kwargs: None)
 sys.modules["app.tasks.email_task"] = email_task_stub
 

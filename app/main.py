@@ -1,7 +1,10 @@
 from fastapi import FastAPI
-from app.core.config import settings
+from fastapi import Depends
 from app.api.v1.router import router
+from app.api.deps import get_db
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI()
 
@@ -19,7 +22,11 @@ app.add_middleware(
 
 @app.get("/")
 def greeting():
-    print(settings.database_url)
-    return {  "message": settings.database_url }
+    return {"message": "TenantHub API is running"}
+
+@app.get("/health")
+async def health_check(db: AsyncSession = Depends(get_db)):
+    await db.execute(text("select 1"))
+    return {"status": "ok", "database": "connected"}
 
 app.include_router(router, prefix="/api/v1")

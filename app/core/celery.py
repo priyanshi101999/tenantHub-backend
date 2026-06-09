@@ -4,8 +4,8 @@ from celery.schedules import crontab
 
 celery_app=Celery(
     "worker",
-    broker=settings.redis_url,
-    backend=settings.redis_url
+    broker=f"redis://{settings.redis_host}:{settings.redis_port}/0",
+    backend=f"redis://{settings.redis_host}:{settings.redis_port}/0"
 )
 
 celery_app.conf.update(
@@ -16,7 +16,7 @@ celery_app.conf.update(
     enable_utc=True
 )
 
-celery_app.autodiscover_tasks(["app.tasks"])
+# celery_app.autodiscover_tasks(["app.tasks"])
 
 celery_app.conf.beat_schedule={
     "send-reminder": {

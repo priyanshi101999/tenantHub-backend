@@ -68,11 +68,7 @@ async def test_invite_user_service_success(monkeypatch, invite_redis, user):
     monkeypatch.setattr(user_service, "redis", invite_redis)
     monkeypatch.setattr(user_service, "generate_invite_token", lambda: "invite-token")
     monkeypatch.setattr(user_service.settings, "frontend_baseurl", "https://tenant.test")
-    monkeypatch.setattr(
-        user_service.send_email_task,
-        "delay",
-        lambda *args: sent_emails.append(args),
-    )
+    monkeypatch.setattr(user_service, "dispatch_email", lambda *args: sent_emails.append(args))
 
     response = await user_service.invite_user_service(data, db)
 

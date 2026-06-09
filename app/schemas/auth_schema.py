@@ -1,6 +1,33 @@
-from pydantic import BaseModel
+import re
+from pydantic import BaseModel, field_validator
 
-class Register(BaseModel):
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+def normalize_email(value: str) -> str:
+    value = value.strip().lower()
+    if not EMAIL_PATTERN.match(value):
+        raise ValueError("Invalid email format")
+    return value
+
+def require_phone(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Phone is required")
+    return value
+
+class EmailValidatedModel(BaseModel):
+    @field_validator("email", check_fields=False)
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+class PhoneRequiredModel(BaseModel):
+    @field_validator("phone", check_fields=False)
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        return require_phone(value)
+
+class Register(EmailValidatedModel, PhoneRequiredModel):
     name: str
     email: str
     password: str
@@ -8,17 +35,19 @@ class Register(BaseModel):
     workspaceName: str
     phone: str
 
-class EmailInput(BaseModel):
+class EmailInput(EmailValidatedModel):
     email: str
 
-class OTPInput(BaseModel):
+class OTPInput(EmailValidatedModel):
     email: str
     code: str
 
-class ResetPassword(OTPInput):
+class ResetPassword(EmailValidatedModel):
     new_password: str
+    code: str
+    email: str
 
-class LoginInput(BaseModel):
+class LoginInput(EmailValidatedModel):
     email: str
     password: str
 
@@ -47,9 +76,9 @@ class FCMTokenInput(BaseModel):
     fcm_token: str
     device_id: str
 
-class PhoneInput(BaseModel):
+class PhoneInput(PhoneRequiredModel):
     phone: str
 
-class VerifyPhoneInput(BaseModel):
+class VerifyPhoneInput(PhoneRequiredModel):
     phone: str
     code: str

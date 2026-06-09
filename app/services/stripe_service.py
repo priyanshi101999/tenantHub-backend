@@ -7,11 +7,25 @@ from app.models.subscription import Subscription
 from app.models.user import User
 from app.core.stripe_config import stripe
 from app.core.config import settings
+from app.core.plan_features import PLAN_FEATURES
 from app.models.plan import Plan
 from app.models.workspace import Workspace
 from app.schemas.response_schema import APIResponse
-from app.schemas.subscription_schema import SubscriptionCancelOut
-from app.tasks.stripe_task import process_Stripe_event
+from app.schemas.subscription_schema import PlanOut, SubscriptionCancelOut
+from app.core.task_dispatcher import dispatch_stripe_event
+
+
+def stripe_value(obj, key, default=None):
+    if obj is None:
+        return default
+
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+
+    try:
+        return obj.get(key, default)
+    except AttributeError:
+        return getattr(obj, key, default)
 
 async def get_stripe_customer_id(workspace,user, db):
     try:
@@ -110,6 +124,238 @@ async def create_subscription_service(plan_id, db, current_user):
         print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create subscription")
 
+
+async def create_checkout_session_service(plan_id, db, current_user):
+    try:
+        result = await db.execute(select(Plan).where(Plan.id == plan_id))
+        plan = result.scalars().first()
+
+        if plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+        workspace_query = await db.execute(select(Workspace).where(Workspace.id == current_user.workspace_id))
+        workspace = workspace_query.scalars().first()
+
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+        user_query = await db.execute(select(User).where(User.workspace_id == workspace.id, User.role == "ADMIN"))
+        admin_user = user_query.scalars().first()
+
+        if admin_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin user not found")
+
+        subscription_query = await db.execute(select(Subscription).where(Subscription.workspace_id == workspace.id))
+        subscription = subscription_query.scalars().first()
+
+        if subscription is not None and not subscription.cancel_at_period_end and subscription.status != SubscriptionStatus.CANCELED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An active subscription already exists. Please update your current subscription to change plans."
+            )
+
+        customer_id = await get_stripe_customer_id(workspace, admin_user, db)
+        checkout_session = stripe.checkout.Session.create(
+            customer=customer_id,
+            mode="subscription",
+            payment_method_types=["card"],
+            line_items=[{"price": plan.stripe_price_id, "quantity": 1}],
+            success_url=f"{settings.frontend_baseurl}/billing?checkout=success&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{settings.frontend_baseurl}/billing?checkout=cancelled",
+            client_reference_id=str(workspace.id),
+            metadata={
+                "workspace_id": str(workspace.id),
+                "plan_id": str(plan.id)
+            },
+            subscription_data={
+                "metadata": {
+                    "workspace_id": str(workspace.id),
+                    "plan_id": str(plan.id)
+                }
+            }
+        )
+
+        return APIResponse(
+            status=200,
+            message="Checkout session created successfully",
+            data={
+                "checkout_url": checkout_session.url,
+                "session_id": checkout_session.id
+            }
+        )
+
+    except HTTPException:
+        raise
+
+    except stripe.error.StripeError as e:
+        print("Stripe error:", e)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Error communicating with Stripe")
+
+    except Exception as e:
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create checkout session")
+
+
+async def complete_checkout_session_service(session_id, db, current_user):
+    try:
+        checkout_session = stripe.checkout.Session.retrieve(
+            session_id,
+            expand=["subscription"]
+        )
+
+        if stripe_value(checkout_session, "mode") != "subscription" or stripe_value(checkout_session, "status") != "complete":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Checkout session is not complete")
+
+        if stripe_value(checkout_session, "payment_status") not in ("paid", "no_payment_required"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Checkout payment is not complete")
+
+        stripe_subscription = stripe_value(checkout_session, "subscription")
+        if isinstance(stripe_subscription, str):
+            stripe_subscription = stripe.Subscription.retrieve(stripe_subscription)
+
+        session_metadata = stripe_value(checkout_session, "metadata", {}) or {}
+        subscription_metadata = stripe_value(stripe_subscription, "metadata", {}) or {}
+        workspace_id = int(
+            stripe_value(session_metadata, "workspace_id")
+            or stripe_value(subscription_metadata, "workspace_id")
+            or stripe_value(checkout_session, "client_reference_id")
+        )
+
+        if workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Checkout session does not belong to your workspace")
+
+        subscription_items = stripe_value(stripe_value(stripe_subscription, "items", {}), "data", [])
+        if not subscription_items:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stripe subscription has no items")
+
+        subscription_item = subscription_items[0]
+        stripe_price_id = stripe_value(stripe_value(subscription_item, "price", {}), "id")
+        plan_id = stripe_value(session_metadata, "plan_id") or stripe_value(subscription_metadata, "plan_id")
+
+        if plan_id is not None:
+            plan_id = int(plan_id)
+        else:
+            plan_query = await db.execute(select(Plan).where(Plan.stripe_price_id == stripe_price_id))
+            plan = plan_query.scalars().first()
+
+            if plan is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found for Stripe price")
+
+            plan_id = plan.id
+
+        current_period_end = stripe_value(subscription_item, "current_period_end") or stripe_value(stripe_subscription, "current_period_end")
+
+        workspace_query = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+        workspace = workspace_query.scalars().first()
+
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+        subscription_query = await db.execute(select(Subscription).where(Subscription.workspace_id == workspace_id))
+        subscription = subscription_query.scalars().first()
+
+        if subscription is None:
+            subscription = Subscription(
+                stripe_subscription_id=stripe_value(stripe_subscription, "id"),
+                workspace_id=workspace_id,
+                plan_id=plan_id,
+                subscription_item_id=stripe_value(subscription_item, "id"),
+                status=SubscriptionStatus.ACTIVE,
+                cancel_at_period_end=False
+            )
+        else:
+            subscription.stripe_subscription_id = stripe_value(stripe_subscription, "id")
+            subscription.workspace_id = workspace_id
+            subscription.plan_id = plan_id
+            subscription.subscription_item_id = stripe_value(subscription_item, "id")
+            subscription.status = SubscriptionStatus.ACTIVE
+            subscription.cancel_at_period_end = False
+            subscription.pending_plan_id = None
+            subscription.pending_change_type = None
+
+        if current_period_end:
+            subscription.current_period_end = datetime.fromtimestamp(current_period_end)
+
+        workspace.plan_id = plan_id
+        db.add(workspace)
+        db.add(subscription)
+        await db.commit()
+
+        return APIResponse(
+            status=200,
+            message="Subscription activated successfully",
+            data={
+                "subscription_id": subscription.stripe_subscription_id,
+                "plan_id": plan_id
+            }
+        )
+
+    except HTTPException:
+        await db.rollback()
+        raise
+
+    except stripe.error.StripeError as e:
+        await db.rollback()
+        print("Stripe error:", e)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Error communicating with Stripe")
+
+    except Exception as e:
+        await db.rollback()
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to complete checkout session")
+
+
+async def get_subscription_plans_service(db, current_user):
+    try:
+        result = await db.execute(select(Plan).where(Plan.is_active == True).order_by(Plan.price.asc()))
+        plans = result.scalars().all()
+        subscription_result = await db.execute(
+            select(Subscription).where(Subscription.workspace_id == current_user.workspace_id)
+        )
+        subscription = subscription_result.scalars().first()
+        has_active_subscription = subscription is not None and not subscription.cancel_at_period_end and subscription.status != SubscriptionStatus.CANCELED
+        current_plan_id = subscription.plan_id if has_active_subscription else current_user.workspace.plan_id
+        current_plan_name = None
+
+        data = []
+        for plan in plans:
+            if plan.id == current_plan_id:
+                current_plan_name = plan.name
+
+            features = PLAN_FEATURES.get(plan.name.upper(), {})
+            data.append(PlanOut(
+                id=plan.id,
+                name=plan.name,
+                price=plan.price,
+                stripe_price_id=plan.stripe_price_id,
+                is_active=plan.is_active,
+                max_tasks=plan.max_tasks,
+                max_users=plan.max_users,
+                features=features
+            ))
+
+        return APIResponse(
+            status=200,
+            message="Subscription plans retrieved successfully",
+            data={
+                "plans": data,
+                "current_plan_id": current_plan_id,
+                "current_plan_name": current_plan_name,
+                "has_active_subscription": has_active_subscription,
+                "subscription": {
+                    "id": subscription.id,
+                    "plan_id": subscription.plan_id,
+                    "status": subscription.status,
+                    "cancel_at_period_end": subscription.cancel_at_period_end,
+                    "current_period_end": subscription.current_period_end
+                } if subscription else None
+            }
+        )
+
+    except Exception as e:
+        print("error", e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve subscription plans")
+
   
 async def webhook_service(request, db):
     signature = request.headers.get("Stripe-Signature")
@@ -123,7 +369,7 @@ async def webhook_service(request, db):
 
     event = event.to_dict()
     print("webhook_service.event",event)
-    process_Stripe_event.delay(event)
+    dispatch_stripe_event(event)
 
     return {"ok":True}
 
@@ -144,10 +390,16 @@ async def cancel_subscription_service(db, current_user):
         
         if subscription.cancel_at_period_end:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, details="Subscription already cancelled")
+
+        free_plan_query = await db.execute(select(Plan).where(Plan.name == "FREE"))
+        free_plan = free_plan_query.scalars().first()
         
         stripe.Subscription.modify(subscription.stripe_subscription_id, cancel_at_period_end=True)
 
         subscription.cancel_at_period_end = True
+        if free_plan is not None:
+            subscription.pending_plan_id = free_plan.id
+            subscription.pending_change_type = "CANCEL_TO_FREE"
         db.add(subscription)
         await db.commit()
         await db.refresh(subscription)
@@ -202,6 +454,8 @@ async def update_subscription_service(plan_id,db, current_user):
             subscription.plan_id=plan_id
             subscription.pending_plan_id=None
             subscription.pending_change_type=None
+            workspace.plan_id=plan_id
+            db.add(workspace)
 
             message = "Subscription upgraded successfully"
             

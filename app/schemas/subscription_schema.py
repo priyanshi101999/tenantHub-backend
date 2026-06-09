@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,5 +14,17 @@ class SubscriptionCancelOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class PlanOut(BaseModel):
+    id: int
+    name: str
+    price: float
+    stripe_price_id: str
+    is_active: bool
+    max_tasks: int
+    max_users: int
+    features: dict[str, Any]
+
+    model_config = ConfigDict(from_attributes=True)
 
     

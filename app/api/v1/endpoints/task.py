@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile
-from app.api.deps import check_plan, get_db,get_current_user
+from app.api.deps import get_db,get_current_user
 from app.schemas.response_schema import APIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.task_service import attach_file_Service, create_task_service, get_analytics_service, get_task_service, get_task_list__service, update_task_service
+from app.services.task_service import attach_file_Service, create_task_service, delete_attachment_service, delete_task_service, get_analytics_service, get_task_service, get_task_list__service, open_attachment_service, update_task_service
 from app.schemas.user_schema import User
 from app.schemas.task_schema import TaskInput, TaskUpdate
 
@@ -17,6 +17,10 @@ async def create_task(data: TaskInput, db:AsyncSession=Depends(get_db), current_
 async def update_task(data: TaskUpdate,id:int=Query(...),  db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
     return await update_task_service(id,data, db, current_user)
 
+@router.delete("/", status_code=200, response_model=APIResponse)
+async def delete_task(id:int=Query(...),  db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
+    return await delete_task_service(id, db, current_user)
+
 @router.get("/list", status_code=200, response_model=APIResponse)
 async def get_tasks_list(page:int=Query(1, gte=1),
                     size:int=Query(10, gte=1, lte=100),
@@ -28,8 +32,20 @@ async def get_tasks_list(page:int=Query(1, gte=1),
     return await get_task_list__service(db, current_user,page, size, task_status, priority, overdue, assignee_id)
 
 @router.post("/attachment", status_code=201, response_model=APIResponse)
-async def attach_file(task_id:int = Query(...), file : UploadFile=File(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(check_plan(["PRO","ENTERPRISE"]))):
+async def attach_file(task_id:int = Query(...), file : UploadFile=File(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
     return await attach_file_Service(task_id, file, db, current_user)
+
+@router.get("/attachment/open")
+async def open_attachment(attachment_id:int = Query(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
+    return await open_attachment_service(attachment_id, db, current_user)
+
+@router.delete("/attachment", status_code=200, response_model=APIResponse)
+async def delete_attachment(attachment_id:int = Query(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
+    return await delete_attachment_service(attachment_id, db, current_user)
+
+@router.post("/attachment/delete", status_code=200, response_model=APIResponse)
+async def delete_attachment_post(attachment_id:int = Query(...), db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
+    return await delete_attachment_service(attachment_id, db, current_user)
 
 @router.get("/analytics", status_code=200, response_model=APIResponse)
 async def get_analytics(db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
