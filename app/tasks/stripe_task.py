@@ -40,7 +40,6 @@ async def handle_event(event):
 
             data=event["data"]["object"]
 
-            print("event_print",event)
             if event["type"] == "checkout.session.completed" and data.get("mode") == "subscription":
                 stripe_subscription_id = data.get("subscription")
                 workspace_id = int(data["metadata"]["workspace_id"])
@@ -184,6 +183,5 @@ async def handle_event(event):
             await db.refresh(stripe_event)
 
         except Exception as e:
-            print("Error processing Stripe event:", e)
             await db.rollback()
             raise

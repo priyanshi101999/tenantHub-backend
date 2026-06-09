@@ -45,7 +45,6 @@ async def get_stripe_customer_id(workspace,user, db):
     
     except stripe.error.StripeError as e:
         await db.rollback()
-        print("Stripe error:", e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Error communicating with Stripe")
 
 async def create_subscription_service(plan_id, db, current_user):
@@ -85,7 +84,6 @@ async def create_subscription_service(plan_id, db, current_user):
             payment_behavior="default_incomplete"
         )
 
-        print("Stripe_subscription.current_period_end",Stripe_subscription)
 
         if subscription is None:
             new_subscription = Subscription(
@@ -121,7 +119,6 @@ async def create_subscription_service(plan_id, db, current_user):
         
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create subscription")
 
 
@@ -188,11 +185,9 @@ async def create_checkout_session_service(plan_id, db, current_user):
         raise
 
     except stripe.error.StripeError as e:
-        print("Stripe error:", e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Error communicating with Stripe")
 
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create checkout session")
 
 
@@ -296,12 +291,10 @@ async def complete_checkout_session_service(session_id, db, current_user):
 
     except stripe.error.StripeError as e:
         await db.rollback()
-        print("Stripe error:", e)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Error communicating with Stripe")
 
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to complete checkout session")
 
 
@@ -353,7 +346,6 @@ async def get_subscription_plans_service(db, current_user):
         )
 
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve subscription plans")
 
   
@@ -368,7 +360,6 @@ async def webhook_service(request, db):
     ) 
 
     event = event.to_dict()
-    print("webhook_service.event",event)
     dispatch_stripe_event(event)
 
     return {"ok":True}
@@ -416,7 +407,6 @@ async def cancel_subscription_service(db, current_user):
     
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to cancel subscription")
         
 async def update_subscription_service(plan_id,db, current_user):
@@ -482,7 +472,6 @@ async def update_subscription_service(plan_id,db, current_user):
     
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update subscription")
 
 
@@ -491,7 +480,6 @@ async def confirm_payment_service(payment_intent_id,db, current_user):
 
         response = stripe.PaymentIntent.confirm(payment_intent_id,payment_method="pm_card_visa")
 
-        print("response",response)
        
         if response.status != "succeeded":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to confirm payment")
@@ -507,5 +495,4 @@ async def confirm_payment_service(payment_intent_id,db, current_user):
     
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to confirm payment")

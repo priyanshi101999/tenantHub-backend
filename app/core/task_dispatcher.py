@@ -10,8 +10,8 @@ def run_in_thread(func, *args, **kwargs):
             result = func(*args, **kwargs)
             if asyncio.iscoroutine(result):
                 asyncio.run(result)
-        except Exception as exc:
-            print("Background task failed:", exc)
+        except Exception:
+            return
 
     thread = threading.Thread(target=runner, daemon=True)
     thread.start()

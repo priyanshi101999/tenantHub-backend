@@ -23,7 +23,6 @@ def send_due_task_reminders(self):
 
 async def send_reminder():
     async with AsyncSessionLocal() as db:
-        print("Cron job is working")
         today= datetime.now(timezone.utc).date() 
         target_date=today + timedelta(days=2)
 

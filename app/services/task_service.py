@@ -110,8 +110,6 @@ async def create_task_service(data, db, current_user):
         await db.refresh(task)
         task.attachments = []
 
-        print("Task created with ID:", task.title)
-
         if assignee is not None:
             await send_task_push_notifications(
                 db,
@@ -203,7 +201,6 @@ async def update_task_service(id,data, db, current_user):
 
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update task")
 
 
@@ -236,7 +233,6 @@ async def delete_task_service(id, db, current_user):
 
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to remove task")
 
 async def get_task_list__service( db, current_user, page, size, task_status, priority, overdue, assignee_id):
@@ -298,7 +294,6 @@ async def get_task_list__service( db, current_user, page, size, task_status, pri
         raise
     
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve tasks")
     
 async def attach_file_Service(task_id,file, db, current_user):
@@ -346,7 +341,6 @@ async def attach_file_Service(task_id,file, db, current_user):
 
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to attach file")
 
 async def open_attachment_service(attachment_id, db, current_user):
@@ -379,7 +373,6 @@ async def open_attachment_service(attachment_id, db, current_user):
         raise
 
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to open attachment")
 
 async def delete_attachment_service(attachment_id, db, current_user):
@@ -417,7 +410,6 @@ async def delete_attachment_service(attachment_id, db, current_user):
 
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete attachment")
 
 async def get_analytics_service(db, current_user):
@@ -447,7 +439,6 @@ async def get_analytics_service(db, current_user):
     
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve analytics")
     
 async def get_task_service(id, db, current_user):
@@ -470,7 +461,6 @@ async def get_task_service(id, db, current_user):
 
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve task")
 
     

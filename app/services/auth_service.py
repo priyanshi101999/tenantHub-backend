@@ -21,7 +21,6 @@ from app.core.twilio_config import client
 
 
 async def register_user_service(registerData, db):
-    print(registerData)
     try:
         result=await db.execute(select(User).options(selectinload(User.workspace)).where(User.email==registerData.email))
         existing_email=result.scalars().first()
@@ -76,7 +75,6 @@ async def register_user_service(registerData, db):
         workspace.owner_id=user.id
         await db.commit()
         await db.refresh(user)
-        print("user", user)
 
         return APIResponse(
             message="Registered successfully",
@@ -89,7 +87,6 @@ async def register_user_service(registerData, db):
         raise
 
     except Exception as e:
-        print(e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to register user")
 
@@ -98,7 +95,6 @@ async def register_user_service(registerData, db):
 async def verify_email_service(email, db):
     
     otp=generate_otp()
-    print("otp", otp)
     html_content=otp_email_template(otp)
 
     try:
@@ -115,27 +111,22 @@ async def verify_email_service(email, db):
     except HTTPException:
         raise
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Email sending failed")
     
 async def verify_otp_service(OtpData: OTPInput,db):
 
     existing_otp=await redis.get(f"email_verification:{OtpData.email}")
-    print("existing_otp", existing_otp, OtpData.code)
 
     if existing_otp == None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
     
     if str(existing_otp) == str(OtpData.code):
-        print("existing_otp.matched")
         try:
             result=await db.execute(select(User).where(User.email==OtpData.email))
             user=result.scalars().first()
             
             if user==None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-            
-            print("user", user)
             
             user.email_verified=True
             db.add(user)
@@ -149,7 +140,6 @@ async def verify_otp_service(OtpData: OTPInput,db):
             raise
 
         except Exception as e:
-            print(e)
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify email")
     else:
@@ -189,7 +179,6 @@ async def login_service(loginData,db):
         await db.rollback()
         raise
     except Exception as e:
-        print(e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to login")
 
@@ -261,7 +250,6 @@ async def forgot_password_service(email, db):
         raise
 
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send OTP")
 
 async def reset_password_service(data,db):
@@ -285,7 +273,6 @@ async def reset_password_service(data,db):
         await db.commit()
         await redis.delete(f"forgot_password:{email}")
     except Exception as e:
-        print("Error", e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reset password")
     
@@ -316,17 +303,14 @@ async def set_password_service(data, db):
     }
 
     try:
-        print("row.password", password)
         await db.execute(delete(RefreshToken).where(RefreshToken.user_id==user.id))
         user.password=hash_password(password)
-        print("user.password", user.password)
         user.email_verified=True
         db.add(RefreshToken(**refresh_Token_data))
         db.add(user)
         await db.commit()
         await redis.delete(f"invite_token:{secret_token}")
     except Exception as e:
-        print("Error", e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to set password")
 
@@ -366,7 +350,6 @@ async def logout_service(data,db, current_user):
 
         return APIResponse(message="Logout successful", status=status.HTTP_200_OK)
     except Exception as e:
-        print("Error", e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to logout")
     
@@ -410,7 +393,6 @@ async def save_fcm_token_service(data, db, current_user):
         raise
 
     except Exception as e:
-        print("Error", e)
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save FCM token")
     
@@ -425,7 +407,6 @@ async def send_otp_service(phone):
         return APIResponse(message="OTP sent successfully", status=200)
 
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send OTP")
 
 
@@ -453,7 +434,6 @@ async def verify_phone_Service(data, db):
         raise
 
     except Exception as e:
-        print("error", e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify phone number")
 
     

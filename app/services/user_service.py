@@ -17,8 +17,6 @@ import math
 
 async def add_user_service(data, db, current_user):
     data = data.model_dump()
-    print("data", data)
-    print("current_user", current_user.workspace_id)
 
     try:
         requested_workspace_id = data.pop("workspace_id", None)
@@ -78,7 +76,6 @@ async def add_user_service(data, db, current_user):
 
     except Exception as e:
         await db.rollback()
-        print("Error:", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add user"
@@ -169,7 +166,6 @@ async def delete_user_service(id, db, current_user):
         )
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=500, detail="Failed to delete user")
 
 
@@ -198,7 +194,6 @@ async def get_user_service(id,db,current_user):
     
     except Exception as e:
         await db.rollback()
-        print("error", e)
         raise HTTPException(status_code=500, detail="Failed to get user")
     
 

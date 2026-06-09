@@ -23,6 +23,5 @@ def send_email_task(self, email:str, subject:str, html_content:str):
     try:
         return send_email(email, subject, html_content)
     except Exception as e:
-        print("error", e)
         raise self.retry(exc=e, countdown=10)
 
