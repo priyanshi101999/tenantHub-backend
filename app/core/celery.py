@@ -2,10 +2,12 @@ from celery import Celery
 from app.core.config import settings
 from celery.schedules import crontab
 
+redis_url = settings.redis_url or f"redis://{settings.redis_host}:{settings.redis_port}/0"
+
 celery_app=Celery(
     "worker",
-    broker=f"redis://{settings.redis_host}:{settings.redis_port}/0",
-    backend=f"redis://{settings.redis_host}:{settings.redis_port}/0"
+    broker=redis_url,
+    backend=redis_url
 )
 
 celery_app.conf.update(
