@@ -24,31 +24,12 @@ def invite_redis():
     return Redis()
 
 
-async def test_add_user_service_other_workspace(current_user):
-    db = FakeDB()
-    data = UserInput(
-        name="New User",
-        email="new@example.com",
-        role="USER",
-        workspace_id=123,
-        phone="8888888888",
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        await user_service.add_user_service(data, db, current_user)
-
-    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-    assert exc_info.value.detail == "You can only add users to your own workspace"
-    assert db.rolled_back is True
-
-
 async def test_add_user_service_duplicate_email(current_user, user):
     db = FakeDB(FakeResult(first=user))
     data = UserInput(
         name="New User",
         email=user.email,
         role="USER",
-        workspace_id=current_user.workspace_id,
         phone="8888888888",
     )
 

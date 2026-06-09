@@ -7,6 +7,7 @@ from app.schemas.response_schema import APIResponse
 
 def test_create_user_endpoint(api_client, monkeypatch):
     async def service(data, db, current_user):
+        assert not hasattr(data, "workspace_id")
         return APIResponse(
             status=status.HTTP_201_CREATED,
             message="User added successfully",
@@ -21,7 +22,6 @@ def test_create_user_endpoint(api_client, monkeypatch):
             "name": "New User",
             "email": "new@example.com",
             "role": "USER",
-            "workspace_id": 99,
             "phone": "8888888888",
         },
     )
