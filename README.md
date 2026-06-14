@@ -290,4 +290,4 @@ Celery Beat command:
 celery -A app.core.celery.celery_app beat --loglevel=info
 ```
 
-For interview/demo deployments, Celery services can be skipped by leaving `USE_CELERY=false`.
+For demo deployments, Celery services can be skipped by leaving `USE_CELERY=false`.
