@@ -12,6 +12,7 @@ class Priority(str, enum.Enum):
 class TaskStatus(str, enum.Enum):
     TODO="TODO"
     IN_PROGRESS="IN_PROGRESS"
+    OVERDUE="OVERDUE"
     DONE="DONE"
 
 class SubscriptionStatus(str, enum.Enum):

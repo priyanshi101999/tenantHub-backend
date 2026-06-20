@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 
 
 class FakeResult:
-    def __init__(self, first=None, scalar=None, all_items=None):
+    def __init__(self, first=None, scalar=None, all_items=None, rowcount=0):
         self._first = first
         self._scalar = scalar
         self._all_items = all_items or []
+        self.rowcount = rowcount
 
     def scalars(self):
         return self
@@ -23,11 +24,13 @@ class FakeResult:
 class FakeDB:
     def __init__(self, *results):
         self.results = list(results)
+        self.executed = []
         self.added = []
         self.committed = False
         self.rolled_back = False
 
     async def execute(self, query):
+        self.executed.append(query)
         if not self.results:
             raise AssertionError(f"Unexpected query: {query}")
         return self.results.pop(0)

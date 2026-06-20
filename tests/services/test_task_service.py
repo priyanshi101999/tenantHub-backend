@@ -116,7 +116,7 @@ async def test_create_task_service_assignee_not_found(free_plan, current_user):
 
 
 async def test_update_task_service_success(task, current_user):
-    db = FakeDB(FakeResult(first=task), FakeResult(all_items=[]))
+    db = FakeDB(FakeResult(first=task), FakeResult(first=task))
     data = TaskUpdate(title="New title", assignee_id=None, status=TaskStatus.TODO)
 
     response = await task_service.update_task_service(1, data, db, current_user)
@@ -178,6 +178,35 @@ async def test_get_analytics_service_success(current_user):
         "done": 0,
         "overdue": 0,
     }
+    query = str(db.executed[0])
+    assert "tasks.due_date <" in query
+    assert "tasks.status !=" in query
+
+
+async def test_mark_overdue_tasks_service_updates_matching_tasks():
+    db = FakeDB(FakeResult(rowcount=2))
+
+    updated_count = await task_service.mark_overdue_tasks_service(db)
+
+    assert updated_count == 2
+    assert db.committed is True
+
+
+async def test_apply_overdue_status_marks_past_due_task(task):
+    task.due_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    task_service.apply_overdue_status(task)
+
+    assert task.status == TaskStatus.OVERDUE
+
+
+async def test_apply_overdue_status_keeps_done_task_done(task):
+    task.status = TaskStatus.DONE
+    task.due_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    task_service.apply_overdue_status(task)
+
+    assert task.status == TaskStatus.DONE
 
 
 async def test_attach_file_service_success(tmp_path, monkeypatch, task, current_user, pdf_file):

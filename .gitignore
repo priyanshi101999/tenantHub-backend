@@ -21,3 +21,7 @@ alembic/__pycache__/
 
 # firebase_Service_account
 firebase_Service_account.json
+
+
+# upload folder
+uploads/

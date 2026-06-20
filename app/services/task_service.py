@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from app.models.task import Task
+from app.models.enums import TaskStatus
 from fastapi import status, HTTPException
 from fastapi.responses import FileResponse
 from app.models.task_attachment import TaskAttachment
@@ -7,7 +8,7 @@ from app.models.user_device import UserDevice
 from app.schemas.task_schema import AttachmentOut, TaskOut
 from app.schemas.response_schema import APIResponse
 from app.core.plan_features import PLAN_FEATURES
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import selectinload
 from app.models.user import User
 from app.models.plan import Plan
@@ -25,6 +26,28 @@ async def get_workspace_plan(db, current_user):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
         
         return current_plan
+
+async def mark_overdue_tasks_service(db):
+    result=await db.execute(
+        update(Task)
+        .where(
+            Task.due_date < datetime.now(timezone.utc),
+            Task.status != TaskStatus.DONE,
+            Task.status != TaskStatus.OVERDUE,
+            Task.is_deleted == False
+        )
+        .values(status=TaskStatus.OVERDUE)
+    )
+    await db.commit()
+    return getattr(result, "rowcount", 0) or 0
+
+def apply_overdue_status(task):
+    due_date = task.due_date
+    if due_date is not None and due_date.tzinfo is None:
+        due_date = due_date.replace(tzinfo=timezone.utc)
+
+    if due_date is not None and due_date < datetime.now(timezone.utc) and task.status != TaskStatus.DONE:
+        task.status = TaskStatus.OVERDUE
 
 def get_plan_features(current_plan):
         return PLAN_FEATURES.get(current_plan.name.upper(), {})
@@ -105,6 +128,7 @@ async def create_task_service(data, db, current_user):
 
     try:
         task = Task(**task_data)
+        apply_overdue_status(task)
         db.add(task)
         await db.commit()
         task_id = task.id
@@ -112,7 +136,11 @@ async def create_task_service(data, db, current_user):
         result = await db.execute(
             select(Task)
             .options(selectinload(Task.attachments.and_(TaskAttachment.is_deleted == False)))
-            .where(Task.id == task_id)
+            .where(
+                Task.id == task_id,
+                Task.workspace_id == current_user.workspace_id,
+                Task.is_deleted == False
+            )
         )
         task = result.scalars().first()
 
@@ -184,17 +212,31 @@ async def update_task_service(id,data, db, current_user):
         for field, value in update_data.items():
             setattr(existing_task, field, value)
 
+        apply_overdue_status(existing_task)
+
         if update_data.get("status") is not None:
-            if update_data["status"] == "DONE":
+            if existing_task.status == TaskStatus.DONE:
                 await send_task_push_notifications(db, current_user, existing_task.created_by, "Task Completed", "Your task has been completed")
                 await send_task_email_notification(db, current_user, existing_task.created_by, "Task Completed", "Your task has been completed")
-            if update_data["status"] == "IN_PROGRESS":
+            if existing_task.status == TaskStatus.IN_PROGRESS:
                 await send_task_push_notifications(db, current_user, existing_task.created_by, "Task In Progress", "Your task is in progress")
                 await send_task_email_notification(db, current_user, existing_task.created_by, "Task In Progress", "Your task is in progress")
 
         
         db.add(existing_task)
         await db.commit()
+
+        result = await db.execute(
+            select(Task)
+            .options(selectinload(Task.attachments.and_(TaskAttachment.is_deleted == False)))
+            .where(
+                Task.id == task_id,
+                Task.workspace_id == current_user.workspace_id,
+                Task.is_deleted == False
+            )
+        )
+        existing_task = result.scalars().first()
+
         return APIResponse(
             message="Task updated successfully",
             status=status.HTTP_200_OK,
@@ -259,7 +301,7 @@ async def get_task_list__service( db, current_user, page, size, task_status, pri
             query=query.where(Task.assignee_id==assignee_id)
 
         if overdue:
-            query=query.where(Task.due_date < datetime.now(timezone.utc), Task.status != "DONE")
+            query=query.where(Task.due_date < datetime.now(timezone.utc), Task.status != TaskStatus.DONE)
 
         result=await db.execute(query.order_by(Task.created_at.desc()).limit(size).offset((page-1)*size))
         tasks=result.scalars().all()
@@ -276,7 +318,7 @@ async def get_task_list__service( db, current_user, page, size, task_status, pri
             count_result=count_result.where(Task.assignee_id==assignee_id)
 
         if overdue:
-            count_result=count_result.where(Task.due_date < datetime.now(timezone.utc), Task.status != "DONE")
+            count_result=count_result.where(Task.due_date < datetime.now(timezone.utc), Task.status != TaskStatus.DONE)
         
         total_items=(await db.execute(count_result)).scalar()
 
@@ -420,12 +462,13 @@ async def delete_attachment_service(attachment_id, db, current_user):
 
 async def get_analytics_service(db, current_user):
     try:
+        now = datetime.now(timezone.utc)
         query=select(
             func.count().label("total"),
-            func.sum(case((Task.status=="TODO",1),else_=0)).label("todo"),
-            func.sum(case((Task.status=="IN_PROGRESS",1),else_=0)).label("in_progress"),
-            func.sum(case((Task.status=="DONE", 1), else_=0)).label("done"),
-            func.sum(case((Task.due_date <datetime.now(timezone.utc),1), else_=0)).label("overdue")
+            func.sum(case((Task.status==TaskStatus.TODO,1),else_=0)).label("todo"),
+            func.sum(case((Task.status==TaskStatus.IN_PROGRESS,1),else_=0)).label("in_progress"),
+            func.sum(case((Task.status==TaskStatus.DONE, 1), else_=0)).label("done"),
+            func.sum(case(((Task.due_date < now) & (Task.status != TaskStatus.DONE), 1), else_=0)).label("overdue")
         ).where(Task.workspace_id==current_user.workspace_id, Task.is_deleted==False)
         
         result=await db.execute(query)

@@ -11,6 +11,7 @@ from app.models.workspace import Workspace
 from app.core.plan_features import PLAN_FEATURES
 from app.core.task_dispatcher import dispatch_notification
 from app.models.user_device import UserDevice
+from app.services.task_service import mark_overdue_tasks_service
 
 @celery_app.task(bind=True, 
              autoretry_for=(Exception,), 
@@ -20,6 +21,19 @@ from app.models.user_device import UserDevice
              max_retries=3)
 def send_due_task_reminders(self):
     return asyncio.run(send_reminder())
+
+@celery_app.task(bind=True,
+             autoretry_for=(Exception,),
+             retry_backoff=True,
+             retry_backoff_max=60,
+             retry_jitter=True,
+             max_retries=3)
+def mark_overdue_tasks(self):
+    return asyncio.run(_mark_overdue_tasks())
+
+async def _mark_overdue_tasks():
+    async with AsyncSessionLocal() as db:
+        return await mark_overdue_tasks_service(db)
 
 async def send_reminder():
     async with AsyncSessionLocal() as db:

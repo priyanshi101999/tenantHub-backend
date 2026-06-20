@@ -24,6 +24,10 @@ celery_app.conf.beat_schedule={
     "send-reminder": {
         "task":"app.tasks.reminder_task.send_due_task_reminders",
         "schedule": crontab(hour=9, minute=0)
+    },
+    "mark-overdue-tasks": {
+        "task":"app.tasks.reminder_task.mark_overdue_tasks",
+        "schedule": crontab(hour=9, minute=0)
     }
 }
 
